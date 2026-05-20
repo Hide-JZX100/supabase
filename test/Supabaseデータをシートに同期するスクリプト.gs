@@ -73,9 +73,10 @@ function importSupabaseToSheet() {
     const rowData = responseData[i];
     const rowValues = [];
     
+    // 二次元配列を組み立てるループ処理：2次元配列の組み立ては、ヘッダーの順番に従って行います
     for (let j = 0; j < headers.length; j++) {
-      const columnName = headers[j];
-      const value = rowData[columnName];
+      const columnName = headers[j]; // 順番が保証されたヘッダー名を取り出す
+      const value = rowData[columnName]; // その名前のデータを引き抜く
       
       // データがnull（空っぽ）の場合は、シート上で空白文字になるようにします
       rowValues.push(value === null ? "" : value);
