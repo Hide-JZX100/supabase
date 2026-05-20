@@ -68,14 +68,12 @@ function getProperties_() {
   
   const url = properties.SUPABASE_URL;
   const key = properties.SUPABASE_KEY;
-  const spreadsheetId = properties.SPREADSHEET_ID;
   const tableName = properties.TARGET_TABLE_NAME;
   
-  if (!url || !key || !spreadsheetId || !tableName) {
+  if (!url || !key ||  !tableName) {
     Logger.log("⚠️ エラー: スクリプトプロパティが正しく設定されていません。");
     Logger.log("確認状況 -> SUPABASE_URL: " + (url ? "OK" : "未設定") + 
                ", SUPABASE_KEY: " + (key ? "OK" : "未設定") + 
-               ", SPREADSHEET_ID: " + (spreadsheetId ? "OK" : "未設定") + 
                ", TARGET_TABLE_NAME: " + (tableName ? "OK" : "未設定"));
     return null;
   }
@@ -83,7 +81,6 @@ function getProperties_() {
   return {
     url: url,
     key: key,
-    spreadsheetId: spreadsheetId,
     tableName: tableName
   };
 }
