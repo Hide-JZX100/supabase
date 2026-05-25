@@ -1,3 +1,19 @@
+/**
+ * @file 17_SupabaseRepository.Supabase永続化.gs
+ * @description Supabaseへのデータ書き込みモジュール。
+ * 商品マスタから取得した在庫データをSupabase (PostgreSQL) に保存します。
+ *
+ * ### 依存関係
+ * - **参照元**: 10_Main.エントリーポイント.gs, 99_Tests.テスト.gs
+ * - **参照先**: 16_SupabaseClient.Supabase接続.gs, 12_Logger.ログ管理.gs, 11_Config.設定管理.gs
+ *
+ * ### 主要関数
+ * @see buildSupabasePayload
+ * @see upsertInventoryToSupabase
+ *
+ * @version 1.0
+ */
+
 // ============================================================================
 // 定数定義
 // ============================================================================
