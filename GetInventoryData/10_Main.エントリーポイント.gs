@@ -219,3 +219,136 @@ function updateInventoryDataBatchWithRetry() {
         throw error;
     }
 }
+
+/**
+ * 使い方ガイドを表示
+ */
+function showUsageGuide() {
+    console.log(`
+=============================================================================
+在庫情報取得スクリプト - リファクタリング版 v2.0
+=============================================================================
+【機能概要】
+Next Engine APIから商品在庫情報を一括取得し、スプレッドシートを更新します。
+【主要機能】
+1. 一括取得: ${MAX_ITEMS_PER_CALL}件ずつまとめてAPI取得し高速化
+2. リトライ: APIエラー時に自動で再試行（最大${RETRY_CONFIG.MAX_RETRIES}回）
+3. ログ管理: 実行結果やエラー詳細をコンソールとシートに記録
+【使用方法】
+1. 関数「updateInventoryDataBatchWithRetry」を実行してください。
+2. これを時間主導型トリガーに設定することで定期実行できます。
+=============================================================================
+  `);
+}
+
+/**
+ * =============================================================================
+ * Phase 5: 新メイン処理関数
+ * =============================================================================
+ *
+ * 【追加内容】
+ * - updateInventoryDataFromGoodsMaster() : 新メイン処理関数
+ *                                          商品マスタAPIで全件取得して
+ *                                          スプレッドシートを全件書き直す
+ * - testPhase5_IntegrationTest()         : テスト環境での統合テスト
+ *
+ * 【既存コードへの影響】
+ * 追記のみのため既存関数への影響はありません
+ *
+ * 【旧メイン処理との違い】
+ * ┌────────────────────────┬──────────────────────────────┐
+ * │ 旧: updateInventory    │ 新: updateInventoryData      │
+ * │     DataBatchWithRetry │     FromGoodsMaster          │
+ * ├────────────────────────┼──────────────────────────────┤
+ * │ A列の商品コードを読む  │ APIから全件取得              │
+ * │ 在庫マスタAPIを呼ぶ    │ 商品マスタAPIを呼ぶ          │
+ * │ C〜K列のみ更新         │ A〜L列を全件書き直し         │
+ * │ 手動ダウンロード必要   │ 手動ダウンロード不要         │
+ * └────────────────────────┴──────────────────────────────┘
+ *
+ * 【トリガー切り替え手順】
+ * 統合テスト完了後、スクリプトプロパティを以下の通り変更する
+ * TRIGGER_FUNCTION_NAME:
+ *   updateInventoryDataBatchWithRetry → updateInventoryDataFromGoodsMaster
+ * =============================================================================
+ */
+
+/**
+ * 新メイン処理関数
+ * 商品マスタAPIで全件取得してスプレッドシートを全件書き直す
+ *
+ * 【処理フロー】
+ * Step 1. リトライ統計リセット        (12_Logger.gs)
+ * Step 2. スプレッドシート・シート取得 (11_Config.gs)
+ * Step 3. 商品マスタAPIで全件取得      (13_NextEngineAPI.gs)
+ * Step 4. データ整形                   (14_InventoryLogic.gs)
+ * Step 5. シート全件書き直し           (15_SpreadsheetRepository.gs)
+ * Step 5b. Supabaseへの全件書き込み   (17_SupabaseRepository.gs)
+ * Step 6. 実行タイムスタンプ記録       (15_SpreadsheetRepository.gs)
+ *
+ * 【トリガー設定】
+ * スクリプトプロパティ TRIGGER_FUNCTION_NAME に
+ * 「updateInventoryDataFromGoodsMaster」を設定してください
+ */
+function updateInventoryDataFromGoodsMaster() {
+    try {
+        // Step 1: リトライ統計リセット
+        resetRetryStats();
+
+        logWithLevel(LOG_LEVEL.MINIMAL, '=== 在庫情報全件更新開始（商品マスタAPI版） ===');
+        const startTime = new Date();
+
+        // Step 2: スプレッドシート・シート取得
+        const { SPREADSHEET_ID, SHEET_NAME } = getSpreadsheetConfig();
+        const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+        const sheet = spreadsheet.getSheetByName(SHEET_NAME);
+
+        if (!sheet) {
+            throw new Error(`シート "${SHEET_NAME}" が見つかりません`);
+        }
+
+        const tokens = getStoredTokens();
+
+        // Step 3: 商品マスタAPIで全件取得（ページネーション対応）
+        logWithLevel(LOG_LEVEL.MINIMAL, '商品マスタAPIから全件取得中...');
+        const goodsMap = fetchAllGoodsData(tokens);
+
+        if (goodsMap.size === 0) {
+            throw new Error('商品マスタAPIから取得したデータが0件でした');
+        }
+
+        logWithLevel(LOG_LEVEL.MINIMAL, `取得完了: ${goodsMap.size}件`);
+
+        // Step 4: データ整形
+        const rows = buildInventoryDataRows(goodsMap);
+
+        // Step 5: シート全件書き直し
+        logWithLevel(LOG_LEVEL.MINIMAL, 'スプレッドシートへの書き込み中...');
+        const writeResult = writeAllInventoryData(sheet, rows);
+
+        // Step 5b: Supabaseへの書き込み
+        logWithLevel(LOG_LEVEL.MINIMAL, 'Supabaseへの書き込み中...');
+        const supabaseResult = upsertInventoryToSupabase(goodsMap);
+        logWithLevel(LOG_LEVEL.MINIMAL, `Supabase書き込み完了: ${supabaseResult.totalRecords}件`);
+
+        // Step 6: 実行タイムスタンプ記録
+        recordExecutionTimestamp();
+
+        // Step 7: 翌日分のトリガーを自動登録（自己スケジューリング）
+        setTriggerForGoodsMaster();
+        logWithLevel(LOG_LEVEL.MINIMAL, '翌日分トリガー登録完了');
+
+        // 完了ログ
+        const duration = ((new Date() - startTime) / 1000).toFixed(1);
+        logWithLevel(LOG_LEVEL.MINIMAL, '\n=== 全件更新完了 ===');
+        logWithLevel(LOG_LEVEL.MINIMAL, `処理時間  : ${duration}秒`);
+        logWithLevel(LOG_LEVEL.MINIMAL, `取得件数  : ${goodsMap.size}件`);
+        logWithLevel(LOG_LEVEL.MINIMAL, `書込件数  : ${writeResult.dataRows}行`);
+        logWithLevel(LOG_LEVEL.MINIMAL, `Supabase  : ${supabaseResult.totalRecords}件（${supabaseResult.chunks}チャンク）`);
+        logWithLevel(LOG_LEVEL.MINIMAL, `処理速度  : ${(goodsMap.size / duration).toFixed(1)}件/秒`);
+
+    } catch (error) {
+        logError('全件更新エラー:', error.message);
+        throw error;
+    }
+}
