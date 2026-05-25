@@ -127,3 +127,73 @@ function updateBatchInventoryData(sheet, batch, inventoryDataMap, rowIndexMap) {
         results: results
     };
 }
+
+/**
+ * 単一行の在庫データを更新（個別更新用）
+ */
+function updateRowWithInventoryData(sheet, rowIndex, inventoryData) {
+    const updateValues = [
+        inventoryData.stock_quantity || 0,
+        inventoryData.stock_allocated_quantity || 0,
+        inventoryData.stock_free_quantity || 0,
+        inventoryData.stock_advance_order_quantity || 0,
+        inventoryData.stock_advance_order_allocation_quantity || 0,
+        inventoryData.stock_advance_order_free_quantity || 0,
+        inventoryData.stock_defective_quantity || 0,
+        inventoryData.stock_remaining_order_quantity || 0,
+        inventoryData.stock_out_quantity || 0
+    ];
+
+    // C列(3)からK列(11)まで更新
+    // COLUMNS.STOCK_QTY は 2 (0始まり) -> getRangeの列番号は 3
+    const range = sheet.getRange(rowIndex, COLUMNS.STOCK_QTY + 1, 1, updateValues.length);
+    range.setValues([updateValues]);
+}
+
+/**
+ * エラーログをスプレッドシートに記録
+ */
+function logErrorsToSheet(errorDetails) {
+    try {
+        const { SPREADSHEET_ID } = getSpreadsheetConfig();
+        const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+        let errorSheet = spreadsheet.getSheetByName('エラーログ');
+
+        // エラーログシートが存在しない場合は自動生成してヘッダー行を設定する
+        // 2回目以降は既存シートの末尾に追記する
+        if (!errorSheet) {
+            errorSheet = spreadsheet.insertSheet('エラーログ');
+            const headers = [
+                '発生日時', '商品コード', 'エラー種別',
+                'エラー内容', 'バッチ番号', '処理日時'
+            ];
+            errorSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+            errorSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+        }
+
+        const errorRows = errorDetails.map(error => [
+            error.timestamp,
+            error.goodsCode,
+            error.errorType,
+            error.errorMessage,
+            error.batchNumber,
+            new Date()
+        ]);
+
+        if (errorRows.length > 0) {
+            const lastRow = errorSheet.getLastRow();
+            const range = errorSheet.getRange(lastRow + 1, 1, errorRows.length, 6);
+            range.setValues(errorRows);
+
+            errorSheet.getRange(lastRow + 1, 1, errorRows.length, 1)
+                .setNumberFormat('yyyy/mm/dd hh:mm:ss');
+            errorSheet.getRange(lastRow + 1, 6, errorRows.length, 1)
+                .setNumberFormat('yyyy/mm/dd hh:mm:ss');
+        }
+
+        console.log(`エラーログに${errorRows.length}件を記録しました`);
+
+    } catch (error) {
+        console.error('エラーログ記録中にエラーが発生:', error.message);
+    }
+}
