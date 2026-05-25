@@ -809,3 +809,55 @@ function testSupabaseConnection() {
     }
 }
 
+/**
+ * Supabase RPC 呼び出しテスト (upsert_ne_inventory_data)
+ *
+ * ダミーの在庫データを作成し、callSupabaseRpc を用いて Supabase 側の
+ * upsert_ne_inventory_data RPC関数を呼び出すテストを行います。
+ *
+ * 【処理フロー】
+ * 1. 1件のテスト用ダミーデータを作成
+ * 2. 引数オブジェクトを params = { "json_data": dummyData } の形式で構築
+ * 3. callSupabaseRpc() を呼び出し、結果を検証
+ * 4. 成功・失敗の結果をコンソールに出力
+ */
+function testSupabaseRpcCall() {
+    console.log('=== Supabase RPC 呼び出しテスト ===');
+    
+    // テスト用ダミーデータ（1件）
+    const dummyData = [
+        {
+            "商品コード": "TEST-ITEM-001",
+            "商品名": "テスト商品（Supabase接続確認用）",
+            "在庫数": 10,
+            "引当数": 2,
+            "フリー在庫数": 8,
+            "予約在庫数": 0,
+            "予約引当数": 0,
+            "予約フリー在庫数": 0,
+            "不良在庫数": 0,
+            "発注残数": 0,
+            "欠品数": 0,
+            "JANコード": 1234567890123 // 数値型（BIGINT）で渡す
+        }
+    ];
+
+    const params = { "json_data": dummyData };
+
+    try {
+        console.log('RPC 呼び出しを実行中...');
+        const result = callSupabaseRpc('upsert_ne_inventory_data', params);
+        
+        console.log('\n=== テスト結果 ===');
+        console.log(`ステータスコード: ${result.statusCode}`);
+        console.log(`レスポンス内容  : ${result.body}`);
+        console.log('✅ Supabase RPC 呼び出しテストに成功しました！');
+        console.log('⚠️ 実行後に Supabase ダッシュボードで "NE_InventoryData" テーブルを確認し、');
+        console.log('   "TEST-ITEM-001" が正しく書き込まれている（または更新されている）ことを確認してください。');
+        
+    } catch (error) {
+        console.error('\n❌ テストエラー:', error.message);
+        console.error('Supabase RPC 呼び出しテストに失敗しました。');
+    }
+}
+
