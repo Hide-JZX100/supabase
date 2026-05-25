@@ -10,7 +10,16 @@
  * - 13_NextEngineAPI.gs: NE APIへのHTTPリクエスト
  * - 14_InventoryLogic.gs: 在庫データの取得・整形
  * - 15_SpreadsheetRepository.gs: スプレッドシートへの書き込み
- * - 17_SupabaseRepository.gs: Supabaseへのデータ書き込み（在庫マスタ更新を含む）
+ * - 17_SupabaseRepository.gs: Supabaseへのデータ書き込み（全件・差分）
+ *
+ * ### 処理フロー (updateInventoryDataFromGoodsMaster)
+ * Step 1. リトライ統計リセット        (12_Logger.gs)
+ * Step 2. スプレッドシート・シート取得 (11_Config.gs)
+ * Step 3. 商品マスタAPIで全件取得      (13_NextEngineAPI.gs)
+ * Step 4. データ整形                   (14_InventoryLogic.gs)
+ * Step 5. シート全件書き直し           (15_SpreadsheetRepository.gs)
+ * Step 5b. Supabaseへの全件書き込み    (17_SupabaseRepository.gs)
+ * Step 6. 実行タイムスタンプ記録       (15_SpreadsheetRepository.gs)
  *
  * ### 処理フロー (updateInventoryDataBatchWithRetry)
  * 1. リトライ統計リセット (12_Logger.gs)
@@ -36,7 +45,7 @@
  * @see updateInventoryDataBatchWithRetry - 【メイン】トリガーに設定する関数
  * @see showUsageGuide                   - 使い方ガイドをコンソールに表示
  *
- * @version 2.1 (リトライ統計対応)
+ * @version 3.0 (Supabase対応)
  */
 /**
  * メイン処理関数の修正版（リトライ統計対応）
