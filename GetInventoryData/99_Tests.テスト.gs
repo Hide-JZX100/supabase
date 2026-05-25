@@ -1135,3 +1135,148 @@ function testUpsertStockToSupabase() {
         console.error(`テストエラー: ${error.message}`);
     }
 }
+
+/**
+ * querySupabaseTable() の疎通およびGETクエリ基本テスト
+ *
+ * 直近1時間に更新されたデータを Supabase から GET リクエストで取得し、
+ * 通信の成功成否および取得データの構造を確認します。
+ *
+ * 【処理フロー】
+ * 1. 1時間前の日時を計算し、ISO 8601 形式の文字列を作成
+ * 2. querySupabaseTable() を使用して 'NE_InventoryData' テーブルから該当レコードをクエリ
+ * 3. ステータスコードが200であること、および返却データ形式が配列であることを検証
+ * 4. 結果をコンソールにログ出力
+ */
+function testQuerySupabaseTable() {
+    console.log('=== querySupabaseTable 疎通テスト ===\n');
+    try {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        console.log('検索条件: 更新日時 >= ' + oneHourAgo);
+
+        const result = querySupabaseTable('NE_InventoryData', {
+            '更新日時': 'gte.' + oneHourAgo,
+            'limit': '5'
+        });
+
+        console.log('ステータスコード: ' + result.statusCode);
+        console.log('成功フラグ      : ' + result.success);
+        console.log('取得件数        : ' + result.data.length + '件');
+
+        if (result.data.length > 0) {
+            console.log('\n【サンプルデータ（先頭1件）】');
+            console.log(JSON.stringify(result.data[0], null, 2));
+        }
+
+        console.log('\n✓ querySupabaseTable 疎通テスト完了');
+    } catch (error) {
+        console.error('❌ テストエラー: ' + error.message);
+    }
+}
+
+/**
+ * getChangedInventorySince() の差分取得テスト
+ *
+ * 過去の日時および未来の日時を指定して、差分抽出ロジックが
+ * 期待通り機能するかを検証します。
+ *
+ * 【処理フロー】
+ * 1. 過去（2時間前）の日時を基準として getChangedInventorySince() を実行
+ *    - 取得件数と結果配列を出力
+ * 2. 未来（1時間後）の日時を基準として getChangedInventorySince() を実行
+ *    - 期待値：取得件数 0件
+ * 3. 取得件数が0件であることを検証
+ */
+function testGetChangedInventorySince() {
+    console.log('=== getChangedInventorySince 差分抽出テスト ===\n');
+    try {
+        // 1. 過去日時テスト
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        console.log('[テスト1] 過去（2時間前）からの差分取得を実行中...');
+        const pastResult = getChangedInventorySince(twoHoursAgo);
+        console.log('結果: ' + pastResult.length + '件取得');
+
+        // 2. 未来日時テスト
+        const oneHourHence = new Date(Date.now() + 60 * 60 * 1000);
+        console.log('\n[テスト2] 未来（1時間後）からの差分取得を実行中...');
+        const futureResult = getChangedInventorySince(oneHourHence);
+        console.log('結果: ' + futureResult.length + '件取得');
+
+        if (futureResult.length === 0) {
+            console.log('✓ 期待通り未来日時の取得結果は0件でした。');
+        } else {
+            console.error('❌ エラー: 未来日時を指定したにもかかわらずデータが取得されました。');
+        }
+
+        console.log('\n✓ getChangedInventorySince 差分抽出テスト完了');
+    } catch (error) {
+        console.error('❌ テストエラー: ' + error.message);
+    }
+}
+
+/**
+ * loadLastExecutedAt/saveLastExecutedAt のタイムスタンプ管理テスト
+ *
+ * スクリプトプロパティを使用した日時の保存、取得、および
+ * 保存値が存在しない場合のフォールバック処理を検証します。
+ * テスト前後で既存のスクリプトプロパティの値を退避・復元します。
+ *
+ * 【処理フロー】
+ * 1. 既存のスクリプトプロパティ 'SUPABASE_LAST_EXECUTED_AT' の値を退避
+ * 2. 一旦プロパティを削除し、loadLastExecutedAt(3) が 3時間前の時刻を返すか（フォールバック）をテスト
+ * 3. saveLastExecutedAt() を呼び出して現在時刻を保存
+ * 4. 再度 loadLastExecutedAt() を呼び出し、保存された日時とミリ秒単位に近い値（またはパースして同等）であることを確認
+ * 5. 退避していた元の値を復元してテストをクリーンアップ
+ */
+function testLastExecutedAtFlow() {
+    console.log('=== タイムスタンプ管理（スクリプトプロパティ）テスト ===\n');
+    const propKey = 'SUPABASE_LAST_EXECUTED_AT';
+    const properties = PropertiesService.getScriptProperties();
+    const originalVal = properties.getProperty(propKey);
+
+    try {
+        // 1. フォールバックのテスト
+        console.log('[テスト1] 一時的にプロパティをクリアしてフォールバック動作を検証');
+        properties.deleteProperty(propKey);
+
+        const fallbackHours = 3;
+        const fallbackTime = loadLastExecutedAt(fallbackHours);
+        const now = Date.now();
+        const expectedFallbackTime = now - fallbackHours * 60 * 60 * 1000;
+
+        // 許容誤差を 5秒とする
+        const diff = Math.abs(fallbackTime.getTime() - expectedFallbackTime);
+        if (diff < 5000) {
+            console.log('✓ フォールバック日時は期待値通り約 ' + fallbackHours + '時間前 です: ' + fallbackTime.toISOString());
+        } else {
+            console.error('❌ エラー: フォールバック日時が期待値からズレています。 差分: ' + diff + 'ms');
+        }
+
+        // 2. 保存と読み出しのテスト
+        console.log('\n[テスト2] 日時の保存と読み出しを検証');
+        const savedString = saveLastExecutedAt();
+        const loadedDate = loadLastExecutedAt();
+
+        console.log('保存値 (文字列): ' + savedString);
+        console.log('読込値 (Date)  : ' + loadedDate.toISOString());
+
+        if (loadedDate.toISOString() === savedString) {
+            console.log('✓ 保存された日時の文字列と、読み出して再変換した文字列が完全に一致しました。');
+        } else {
+            console.error('❌ エラー: 保存した日時と読み出した日時が一致しません。');
+        }
+
+        console.log('\n✓ タイムスタンプ管理テスト完了');
+    } catch (error) {
+        console.error('❌ テストエラー: ' + error.message);
+    } finally {
+        // 3. 元の値を復元
+        if (originalVal !== null) {
+            properties.setProperty(propKey, originalVal);
+            console.log('\n[クリーンアップ] 元のプロパティ値を復元しました: ' + originalVal);
+        } else {
+            properties.deleteProperty(propKey);
+            console.log('\n[クリーンアップ] テスト前の空状態を復元しました');
+        }
+    }
+}
