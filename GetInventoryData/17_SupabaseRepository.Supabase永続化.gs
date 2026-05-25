@@ -137,3 +137,39 @@ function upsertInventoryToSupabase(goodsMap) {
   }
 }
 
+/**
+ * 在庫マスタ取得データをSupabase用ペイロードに変換
+ *
+ * inventoryDataMap (Map型) の各要素に対して、キー名の日本語化を行い、
+ * 在庫数値フィールドのみを保持したオブジェクト配列を作成します。
+ * 商品名およびJANコードは送信データに含めません。
+ *
+ * 【処理フロー】
+ * 1. Map内の各要素をループ処理
+ * 2. 各在庫数値項目について、念のため undefined/null 回避のフォールバック (|| 0) を指定
+ * 3. 整形済みのオブジェクトを配列に集約して返す
+ *
+ * @param {Map} inventoryDataMap - getBatchInventoryDataWithRetry() の返却値 (Map<goodsCode, inventoryData>)
+ * @return {Array} Supabase RPC (upsert_ne_stock_data) 用のオブジェクト配列
+ */
+function buildStockPayload(inventoryDataMap) {
+  const payload = [];
+
+  for (const [goodsCode, data] of inventoryDataMap) {
+    payload.push({
+      "商品コード": goodsCode,
+      "在庫数": data.stock_quantity || 0,
+      "引当数": data.stock_allocated_quantity || 0,
+      "フリー在庫数": data.stock_free_quantity || 0,
+      "予約在庫数": data.stock_advance_order_quantity || 0,
+      "予約引当数": data.stock_advance_order_allocation_quantity || 0,
+      "予約フリー在庫数": data.stock_advance_order_free_quantity || 0,
+      "不良在庫数": data.stock_defective_quantity || 0,
+      "発注残数": data.stock_remaining_order_quantity || 0,
+      "欠品数": data.stock_out_quantity || 0
+    });
+  }
+
+  return payload;
+}
+
