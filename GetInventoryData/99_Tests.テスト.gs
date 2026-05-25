@@ -983,3 +983,57 @@ function testUpsertInventoryToSupabase() {
         console.error(`テストエラー: ${error.message}`);
     }
 }
+
+/**
+ * buildStockPayload() の変換ロジック単体テスト
+ *
+ * スプレッドシートの先頭3件の商品コードを使用して、在庫マスタAPIからデータを取得し、
+ * buildStockPayload() によって在庫数値のみの日本語キーオブジェクトに変換できるかをテストします。
+ * 商品名およびJANコードが含まれていないことを確認します。
+ *
+ * 【処理フロー】
+ * 1. getSpreadsheetConfig() から設定情報を取得し、シートの A 列から先頭3件の商品コードを取得
+ * 2. getStoredTokens() でトークンを取得
+ * 3. getBatchInventoryDataWithRetry() で在庫マスタデータを取得
+ * 4. buildStockPayload() を呼び出して変換
+ * 5. 変換前後の値をコンソールに出力し、商品名・JANコードが含まれていないかを確認
+ */
+function testBuildStockPayload() {
+    console.log('=== buildStockPayload テスト ===\n');
+
+    try {
+        // スプレッドシートから先頭3件の商品コードを取得
+        const { SPREADSHEET_ID, SHEET_NAME } = getSpreadsheetConfig();
+        const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+        const codes = sheet.getRange(2, 1, 3, 1).getValues()
+            .map(r => r[0]).filter(c => c);
+
+        const tokens = getStoredTokens();
+
+        // 在庫マスタAPIから3件取得
+        const inventoryDataMap = getBatchInventoryDataWithRetry(codes, tokens, 0);
+
+        console.log(`取得件数: ${inventoryDataMap.size}件\n`);
+
+        // 変換実行
+        const payload = buildStockPayload(inventoryDataMap);
+
+        // 結果確認
+        console.log('【変換結果（先頭1件）】');
+        if (payload.length > 0) {
+            const sample = payload[0];
+            console.log(`商品コード    : ${sample['商品コード']}`);
+            console.log(`在庫数        : ${sample['在庫数']} (${typeof sample['在庫数']})`);
+            console.log(`引当数        : ${sample['引当数']}`);
+            console.log(`フリー在庫数  : ${sample['フリー在庫数']}`);
+            console.log(`商品名        : ${sample['商品名'] !== undefined ? '❌ 含まれている（削除すること）' : '✓ 含まれていない'}`);
+            console.log(`JANコード     : ${sample['JANコード'] !== undefined ? '❌ 含まれている（削除すること）' : '✓ 含まれていない'}`);
+        }
+
+        console.log('\n✓ buildStockPayload テスト完了');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
+
