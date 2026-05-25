@@ -342,3 +342,93 @@ function testRetryLogging() {
         console.log('リトライログシートが存在しません');
     }
 }
+
+/**
+ * リトライ機能の最終動作確認
+ */
+function finalRetryTest() {
+    console.log('=== リトライ機能 最終動作確認 ===\n');
+
+    // テスト1: リトライなしの場合
+    console.log('【テスト1】リトライなし');
+    resetRetryStats();
+
+    // 正常なAPI呼び出しをシミュレート(バッチ4個)
+    // recordRetryAttemptは呼ばれない想定
+
+    showRetryStats();
+    console.log('期待結果: リトライ統計情報が表示されない\n');
+
+    logRetryStatsToSheet();
+    console.log('期待結果: 「リトライ0回: ログ記録スキップ」と表示される\n\n');
+
+
+    // テスト2: リトライ発生の場合
+    console.log('【テスト2】リトライ発生');
+    resetRetryStats();
+
+    // バッチ1: 2回目の試行で成功(リトライ1回)
+    recordRetryAttempt(0, 2);
+
+    // バッチ2-4: 1回目で成功(リトライなし)
+    // recordRetryAttemptは呼ばれない
+
+    // retriesByBatchに要素を追加(バッチ総数をシミュレート)
+    retryStats.retriesByBatch[0] = 2;
+    retryStats.retriesByBatch[1] = 1;
+    retryStats.retriesByBatch[2] = 1;
+    retryStats.retriesByBatch[3] = 1;
+
+    showRetryStats();
+    console.log('期待結果:');
+    console.log('  総リトライ回数: 1回');
+    console.log('  リトライ発生バッチ: 1個');
+    console.log('  最大リトライ回数: 2回');
+    console.log('  リトライ発生率: 25.0%\n');
+
+    logRetryStatsToSheet();
+    console.log('期待結果: シートに記録される\n\n');
+
+
+    // テスト3: リトライログシート確認
+    console.log('【テスト3】リトライログシート確認');
+    const { SPREADSHEET_ID } = getSpreadsheetConfig();
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const retryLogSheet = spreadsheet.getSheetByName('リトライログ');
+
+    if (retryLogSheet) {
+        const lastRow = retryLogSheet.getLastRow();
+        console.log(`総行数: ${lastRow}行`);
+
+        if (lastRow > 1) {
+            console.log('\n最新の5件:');
+            const startRow = Math.max(2, lastRow - 4);
+            const data = retryLogSheet.getRange(startRow, 1, lastRow - startRow + 1, 6).getValues();
+
+            data.forEach((row, index) => {
+                const actualRow = startRow + index;
+                const retryRate = parseFloat(row[4]);
+
+                console.log(`\n[行${actualRow}]`);
+                console.log(`  実行日時: ${Utilities.formatDate(row[0], 'JST', 'MM/dd HH:mm:ss')}`);
+                console.log(`  総リトライ回数: ${row[1]}`);
+                console.log(`  リトライ発生バッチ数: ${row[2]}`);
+                console.log(`  リトライ発生率: ${row[4]}%`);
+                console.log(`  備考: ${row[5]}`);
+
+                // 検証
+                if (retryRate === 0) {
+                    console.log('  ⚠️ 警告: リトライ発生率0%の行が残っています');
+                } else {
+                    console.log('  ✓ OK');
+                }
+            });
+        }
+
+        console.log('\n期待結果: リトライ発生率0%の行が存在しない');
+    } else {
+        console.log('リトライログシートが存在しません');
+    }
+
+    console.log('\n=== テスト完了 ===');
+}
