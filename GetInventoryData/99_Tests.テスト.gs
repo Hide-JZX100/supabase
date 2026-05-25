@@ -623,3 +623,82 @@ function testPhase1_Step1() {
     }
 }
 
+// ============================================================================
+// Step 2: ページネーション動作確認（2ページ分）
+// ============================================================================
+
+/**
+ * Phase1 Step2: ページネーション動作確認
+ *
+ * 【確認内容】
+ * - offset=0 と offset=1000 で異なるデータが返ってくるか
+ * - 返却件数が limit 未満になったタイミングが最終ページかどうか
+ * - 重複データがないか（1ページ目の末尾と2ページ目の先頭を比較）
+ *
+ * 【Step1 完了後に実行してください】
+ */
+function testPhase1_Step2() {
+    console.log('=== Phase1 Step2: ページネーション動作確認 ===\n');
+
+    try {
+        const tokens = getStoredTokens();
+        const LIMIT = 1000;
+
+        // 1ページ目
+        console.log('--- 1ページ目 (offset=0) ---');
+        const page1 = phase1_fetchGoodsData_(tokens, LIMIT, 0);
+
+        if (page1.responseData.result !== 'success') {
+            console.log(`❌ 1ページ目 APIエラー: ${page1.responseData.message}`);
+            return;
+        }
+
+        const page1Data = page1.responseData.data || [];
+        const page1Count = page1Data.length;
+        console.log(`処理時間: ${page1.duration}秒`);
+        console.log(`取得件数: ${page1Count}件`);
+        console.log(`最終ページ判定: ${page1Count < LIMIT ? '✓ これが最終ページ' : '次のページあり'}`);
+
+        // 1ページ目が既に最終ページの場合
+        if (page1Count < LIMIT) {
+            console.log(`\n総件数: ${page1Count}件（1ページで全件取得完了）`);
+            console.log('\n✓ Step2 完了 → testPhase1_Step3() を実行してください');
+            return;
+        }
+
+        // 2ページ目
+        console.log('\n--- 2ページ目 (offset=1000) ---');
+        Utilities.sleep(500); // API負荷分散
+        const page2 = phase1_fetchGoodsData_(tokens, LIMIT, LIMIT);
+
+        if (page2.responseData.result !== 'success') {
+            console.log(`❌ 2ページ目 APIエラー: ${page2.responseData.message}`);
+            return;
+        }
+
+        const page2Data = page2.responseData.data || [];
+        const page2Count = page2Data.length;
+        console.log(`処理時間: ${page2.duration}秒`);
+        console.log(`取得件数: ${page2Count}件`);
+        console.log(`最終ページ判定: ${page2Count < LIMIT ? '✓ これが最終ページ' : '次のページあり'}`);
+
+        // 重複チェック（1ページ目末尾と2ページ目先頭の比較）
+        console.log('\n【重複チェック】');
+        const page1Last = page1Data[page1Data.length - 1].goods_id;
+        const page2First = page2Data[0].goods_id;
+        console.log(`1ページ目の末尾: ${page1Last}`);
+        console.log(`2ページ目の先頭: ${page2First}`);
+        console.log(page1Last !== page2First ? '✓ 重複なし' : '❌ 重複あり（ページネーションに問題あり）');
+
+        // 2ページ目以降があるかの情報
+        if (page2Count === LIMIT) {
+            console.log('\n3ページ目以降が存在します → testPhase1_Step3() で全件数を確認してください');
+        }
+
+        console.log('\n✓ Step2 完了 → 問題なければ testPhase1_Step3() を実行してください');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
+
