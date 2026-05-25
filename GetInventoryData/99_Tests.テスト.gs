@@ -1,4 +1,49 @@
 /**
+ * @file 99_Tests.gs
+ * @description テスト・管理・診断ツール。
+ * システムの動作確認、設定検証、健全性チェックのためのテスト関数と管理用ユーティリティを提供します。
+ * 本番処理（10_Main.gs）には影響を与えません。
+ *
+ * ### 依存関係
+ * - **参照先**:
+ *   - 11_Config.gs (getSpreadsheetConfig, getStoredTokens, LOG_LEVEL, RETRY_CONFIG)
+ *   - 12_Logger.gs (resetRetryStats, showRetryStats, recordRetryAttempt, getCurrentLogLevel, retryStats)
+ *   - 14_InventoryLogic.gs (getBatchInventoryDataWithRetry)
+ *   - 15_SpreadsheetRepository.gs (シート参照)
+ *
+ * ### 推奨実行順序
+ * #### 初回セットアップ時
+ * 1. `verifyConfiguration()` : 設定値・トークンの確認
+ * 2. `testRetryFunction()` : API接続とリトライ動作の確認
+ * 3. `showSREDashboard()` : システム全体の健全性確認
+ *
+ * #### トラブル発生時
+ * 1. `verifyConfiguration()` : 設定値の再確認
+ * 2. `testRetryFunction()` : API応答の確認
+ * 3. `showSREDashboard()` : エラーログ・リトライ統計の確認
+ *
+ * ### 主要機能
+ * - **動作確認**: `testRetryFunction`, `verifyConfiguration`
+ * - **システム健全性**: `showSREDashboard`
+ * - **リトライ検証**: `testRetryLogging`, `finalRetryTest`
+ * - **デバッグ・診断**: `checkFileUsage`, `locateFunctions`
+ *
+ * ### 注意事項
+ * - `finalRetryTest()` は `retryStats` グローバル変数を直接操作するため、本番処理と並行して実行しないでください。
+ * - `testRetryFunction()` は実際にAPIを呼び出すため、レート制限に注意してください。
+ * - スプレッドシートへの書き込みを伴うテストは本番データへの影響に注意してください。
+ *
+ * @version 2.1
+ * @see testRetryFunction
+ * @see verifyConfiguration
+ * @see showSREDashboard
+ * @see testRetryLogging
+ * @see finalRetryTest
+ * @see checkFileUsage
+ * @see locateFunctions
+ */
+
+/**
  * API接続・リトライ動作確認テスト
  *
  * スプレッドシートの先頭10件を使用してAPIを実際に呼び出し
