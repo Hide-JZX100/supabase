@@ -79,3 +79,59 @@ function logError(message, ...args) {
         console.error(message);
     }
 }
+
+/**
+ * 詳細エラー出力
+ */
+function logErrorDetail(goodsCode, errorType, errorMessage, additionalInfo = {}) {
+    console.error('\n========================================');
+    console.error(`❌ エラー詳細: ${goodsCode}`);
+    console.error('========================================');
+    console.error(`エラー種別: ${errorType}`);
+    console.error(`エラー内容: ${errorMessage}`);
+    console.error(`発生時刻: ${Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss')}`);
+
+    if (Object.keys(additionalInfo).length > 0) {
+        console.error('\n--- 追加情報 ---');
+        for (const [key, value] of Object.entries(additionalInfo)) {
+            console.error(`${key}: ${JSON.stringify(value)}`);
+        }
+    }
+
+    console.error('========================================\n');
+}
+
+/**
+ * APIエラー詳細ログ
+ * @param {string} apiName      - API名称（ログ表示用ラベル）
+ * @param {Object} requestData  - リクエスト情報 { goodsCodeCount, firstCode, lastCode }
+ * @param {Object|null} responseData - APIレスポンス（通信エラー時はnull）
+ * @param {Error}  error        - 発生したエラーオブジェクト
+ */
+function logAPIErrorDetail(apiName, requestData, responseData, error) {
+    console.error('\n========================================');
+    console.error(`❌ API呼び出しエラー: ${apiName}`);
+    console.error('========================================');
+    console.error(`エラー内容: ${error.message}`);
+    console.error(`発生時刻: ${Utilities.formatDate(new Date(), 'JST', 'yyyy/MM/dd HH:mm:ss')}`);
+
+    console.error('\n--- リクエスト情報 ---');
+    console.error(`商品コード数: ${requestData.goodsCodeCount || 'unknown'}`);
+    if (requestData.firstCode && requestData.lastCode) {
+        console.error(`範囲: ${requestData.firstCode} ～ ${requestData.lastCode}`);
+    }
+
+    console.error('\n--- レスポンス情報 ---');
+    if (responseData) {
+        console.error(`result: ${responseData.result || 'undefined'}`);
+        console.error(`message: ${responseData.message || 'undefined'}`);
+        console.error(`count: ${responseData.count || 'undefined'}`);
+        if (responseData.data) {
+            console.error(`data length: ${Array.isArray(responseData.data) ? responseData.data.length : 'not an array'}`);
+        }
+    } else {
+        console.error('レスポンスデータなし');
+    }
+
+    console.error('========================================\n');
+}
