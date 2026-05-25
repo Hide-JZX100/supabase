@@ -926,3 +926,60 @@ function testBuildSupabasePayload() {
         console.error(`テストエラー: ${error.message}`);
     }
 }
+
+/**
+ * upsertInventoryToSupabase() の結合テスト
+ *
+ * NE APIから実際に先頭10件の商品データを取得し、upsertInventoryToSupabase() を実行します。
+ * 送信が正常に完了することを確認します。
+ *
+ * 【処理フロー】
+ * 1. getStoredTokens() でトークンを取得
+ * 2. fetchGoodsDataOnePage_(tokens, 10, 0) で NE API から商品データを10件取得
+ * 3. 取得データを Map に格納
+ * 4. upsertInventoryToSupabase(testMap) を実行
+ * 5. 実行結果（送信件数、チャンク数、成否）をコンソールに出力
+ */
+function testUpsertInventoryToSupabase() {
+    console.log('=== Supabase upsert テスト（10件） ===\n');
+
+    try {
+        const tokens = getStoredTokens();
+
+        // NE APIから10件取得
+        console.log('NE APIから10件取得中...');
+        const { data, updatedTokens } = fetchGoodsDataOnePage_(tokens, 10, 0);
+
+        // テスト中も最新のトークンを保持するように修正（認証切れ防止）
+        if (updatedTokens) {
+            updateStoredTokens(updatedTokens.accessToken, updatedTokens.refreshToken);
+        }
+
+        if (!data || data.length === 0) {
+            console.log('❌ NE APIからデータが取得できませんでした');
+            return;
+        }
+
+        // テスト用Mapを構築
+        const testMap = new Map();
+        data.forEach(item => testMap.set(item.goods_id, item));
+        console.log(`取得件数: ${testMap.size}件\n`);
+
+        // Supabaseへ書き込み
+        console.log('Supabaseへ書き込み中...');
+        const result = upsertInventoryToSupabase(testMap);
+
+        // 結果出力
+        console.log('\n=== テスト結果 ===');
+        console.log(`総レコード数 : ${result.totalRecords}件`);
+        console.log(`チャンク数   : ${result.chunks}個`);
+        console.log(`成功         : ${result.success ? '✓' : '✗'}`);
+
+        console.log('\n【Supabaseダッシュボードで以下を確認してください】');
+        console.log('Table Editor → NE_InventoryData');
+        console.log('上記商品コードのデータが更新されているか確認してください。');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
