@@ -49,3 +49,33 @@ function showCurrentLogLevel() {
     console.log('setLogLevel(2) // SUMMARYに変更');
     console.log('setLogLevel(3) // DETAILEDに変更');
 }
+
+// ============================================================================
+// ログ出力関数
+// ============================================================================
+
+/**
+ * レベル指定付きログ出力
+ */
+function logWithLevel(requiredLevel, message, ...args) {
+    const currentLevel = getCurrentLogLevel();
+
+    if (currentLevel >= requiredLevel) {
+        if (args.length > 0) {
+            console.log(message, ...args);
+        } else {
+            console.log(message);
+        }
+    }
+}
+
+/**
+ * エラーログ出力（標準）
+ */
+function logError(message, ...args) {
+    if (args.length > 0) {
+        console.error(message, ...args);
+    } else {
+        console.error(message);
+    }
+}
