@@ -264,3 +264,36 @@ function logRetryStatsToSheet() {
         logError('リトライログ記録エラー:', error.message);
     }
 }
+
+/**
+ * 実行完了日時を記録
+ */
+function recordExecutionTimestamp() {
+    try {
+        const properties = PropertiesService.getScriptProperties();
+        const spreadsheetId = properties.getProperty('SPREADSHEET_ID');
+        const sheetName = properties.getProperty('LOG_SHEET_NAME');
+
+        if (!spreadsheetId || !sheetName) {
+            throw new Error('スクリプトプロパティ SPREADSHEET_ID または LOG_SHEET_NAME が設定されていません。');
+        }
+
+        const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+        const sheet = spreadsheet.getSheetByName(sheetName);
+
+        if (!sheet) {
+            console.error(`シート "${sheetName}" が見つかりません。日時の記録をスキップします。`);
+            return;
+        }
+
+        // 実行完了日時をA1セルに上書き保存する
+        // このセルを他の用途に使用すると日時が上書きされるため注意
+        sheet.getRange(1, 1).setValue(
+            Utilities.formatDate(new Date(), 'JST', 'MM月dd日HH時mm分ss秒')
+        );
+        console.log(`実行日時をシート "${sheetName}" のA1セルに記録しました。`);
+
+    } catch (error) {
+        console.error('実行日時の記録中にエラーが発生しました:', error.message);
+    }
+}
