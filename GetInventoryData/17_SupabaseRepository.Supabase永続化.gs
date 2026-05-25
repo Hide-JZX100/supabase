@@ -57,3 +57,83 @@ function buildSupabasePayload(goodsMap) {
   
   return payload;
 }
+
+/**
+ * 在庫データを Supabase に全件 upsert する
+ *
+ * buildSupabasePayload で変換された配列をチャンク分割（500件）し、
+ * upsert_ne_inventory_data RPCを呼び出します。一部チャンクが失敗しても
+ * 全体の処理を止めずに処理を継続します。
+ *
+ * 【処理フロー】
+ * 1. buildSupabasePayload(goodsMap) を呼び出してペイロード配列を生成
+ * 2. 配列サイズから必要なチャンク数（分割数）を計算
+ * 3. 各チャンク（500件単位）ごとにスライスして送信用 payload を作成
+ * 4. 各チャンクごとに callSupabaseRpc('upsert_ne_inventory_data', { json_data: chunk }) を実行
+ *    - 処理時間を計測しログに出力
+ *    - エラー発生時は logError を呼び出し、カウントをインクリメント（例外は再スローせず継続）
+ * 5. 全チャンク終了後、成功・失敗を集計しログに出力。失敗がある場合は例外は投げず結果の success を false とする。
+ *
+ * @param {Map} goodsMap - fetchAllGoodsData() の返却値 (Map型)
+ * @return {Object} 処理結果オブジェクト { totalRecords: number, chunks: number, success: boolean }
+ */
+function upsertInventoryToSupabase(goodsMap) {
+  const startTime = new Date();
+  
+  try {
+    const allRecords = buildSupabasePayload(goodsMap);
+    const totalRecords = allRecords.length;
+    const chunkCount = Math.ceil(totalRecords / SUPABASE_CHUNK_SIZE);
+    
+    logWithLevel(LOG_LEVEL.MINIMAL, 'Supabaseへの書き込み開始: ' + totalRecords + '件 / ' + chunkCount + 'チャンク');
+
+    let successChunks = 0;
+    let errorChunks = 0;
+    
+    for (let i = 0; i < totalRecords; i += SUPABASE_CHUNK_SIZE) {
+      const chunk = allRecords.slice(i, i + SUPABASE_CHUNK_SIZE);
+      const chunkNumber = Math.floor(i / SUPABASE_CHUNK_SIZE) + 1;
+      
+      logWithLevel(LOG_LEVEL.SUMMARY, '  チャンク ' + chunkNumber + '/' + chunkCount + ': ' + chunk.length + '件 送信中...');
+      
+      const chunkStartTime = new Date();
+      
+      try {
+        // RPC 呼び出し
+        callSupabaseRpc('upsert_ne_inventory_data', { json_data: chunk });
+        
+        const chunkDuration = new Date() - chunkStartTime;
+        successChunks++;
+        logWithLevel(LOG_LEVEL.MINIMAL, '  チャンク ' + chunkNumber + '/' + chunkCount + ': ✓ 完了（ステータス: 200/204, ' + chunkDuration + 'ms）');
+        
+      } catch (chunkError) {
+        errorChunks++;
+        logError('  チャンク ' + chunkNumber + '/' + chunkCount + ': ✗ 失敗 - ' + chunkError.message);
+      }
+    }
+    
+    const totalDuration = ((new Date() - startTime) / 1000).toFixed(1);
+    
+    // 全体サマリーログ
+    logWithLevel(LOG_LEVEL.MINIMAL, 'Supabaseへの書き込み完了: ' + totalRecords + '件 (処理時間: ' + totalDuration + '秒)');
+    
+    // SRE的品質向上：成功率の出力
+    const successRate = ((successChunks / chunkCount) * 100).toFixed(1);
+    logWithLevel(LOG_LEVEL.MINIMAL, '  ✓ チャンク成功率: ' + successRate + '% (' + successChunks + '/' + chunkCount + 'チャンク成功)');
+    
+    if (errorChunks > 0) {
+      logError('Supabase書き込み: ' + errorChunks + 'チャンクが失敗しました。詳細は上記ログを確認してください。');
+    }
+    
+    return {
+      totalRecords: totalRecords,
+      chunks: chunkCount,
+      success: (errorChunks === 0)
+    };
+    
+  } catch (error) {
+    logError('Supabase書き込み処理（全体）エラー: ', error.message);
+    throw error;
+  }
+}
+
