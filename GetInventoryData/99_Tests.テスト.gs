@@ -702,3 +702,86 @@ function testPhase1_Step2() {
     }
 }
 
+// ============================================================================
+// Step 3: 全件取得して総件数を把握
+// ============================================================================
+
+/**
+ * Phase1 Step3: 全件取得・総件数把握
+ *
+ * 【確認内容】
+ * - 全ページを取得して総件数を確認
+ * - 各ページの処理時間と合計処理時間を計測
+ * - xxxxxxを含む商品が1件も含まれていないかを抽出確認
+ *
+ * 【Step2 完了後に実行してください】
+ * 【注意】全件取得するため数秒かかります
+ */
+function testPhase1_Step3() {
+    console.log('=== Phase1 Step3: 全件取得・総件数把握 ===\n');
+
+    try {
+        const tokens = getStoredTokens();
+        const LIMIT = 1000;
+        let offset = 0;
+        let page = 1;
+        let totalCount = 0;
+        let hasNext = true;
+        const allStartTime = new Date();
+
+        // ページネーションループ
+        // 返却件数が limit 未満になったら最終ページと判定して終了
+        while (hasNext) {
+            console.log(`--- ${page}ページ目 (offset=${offset}) ---`);
+
+            const { responseData, duration } = phase1_fetchGoodsData_(tokens, LIMIT, offset);
+
+            if (responseData.result !== 'success') {
+                console.log(`❌ APIエラー: ${responseData.message}`);
+                break;
+            }
+
+            const data = responseData.data || [];
+            const count = data.length;
+            totalCount += count;
+
+            console.log(`処理時間: ${duration}秒 | 取得件数: ${count}件 | 累計: ${totalCount}件`);
+
+            // xxxxxxフィルタ漏れチェック（各ページのサンプルを確認）
+            const leaked = data.filter(item =>
+                item.goods_location && item.goods_location.includes('xxxxxx')
+            );
+            if (leaked.length > 0) {
+                console.log(`  ⚠️ xxxxxxを含む商品が${leaked.length}件混入: ${leaked.map(i => i.goods_id).join(', ')}`);
+            }
+
+            // 最終ページ判定
+            if (count < LIMIT) {
+                hasNext = false;
+                console.log('  → 最終ページ');
+            } else {
+                offset += LIMIT;
+                page++;
+
+                // API負荷分散のため待機（現在の本番設定と同じ500ms）
+                if (hasNext) Utilities.sleep(500);
+            }
+        }
+
+        // 結果サマリー
+        const totalDuration = ((new Date() - allStartTime) / 1000).toFixed(1);
+        console.log('\n=== Phase1 Step3 結果サマリー ===');
+        console.log(`総ページ数  : ${page}ページ`);
+        console.log(`総件数      : ${totalCount}件`);
+        console.log(`合計処理時間: ${totalDuration}秒`);
+        console.log(`APIコール数 : ${page}回`);
+
+        console.log('\n【Phase1 完了後の次のステップ】');
+        console.log('上記の結果に問題がなければ Phase2 に進めます。');
+        console.log('結果をお知らせください。');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
+
