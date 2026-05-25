@@ -6,12 +6,12 @@
  * - **参照元**: 99_Tests.テスト.gs
  * - **参照先**: 11_Config.設定管理.gs, 12_Logger.ログ管理.gs
  *
- * ### 主要関数
- * @see getSupabaseConfig
- * @see callSupabaseRpc
- * @see querySupabaseTable - テーブルへのGETリクエスト汎用ラッパー（Phase 4追加）
+ * ### 公開関数
+ * @see getSupabaseConfig   - Supabase接続設定を取得
+ * @see callSupabaseRpc     - RPC関数への汎用POSTラッパー
+ * @see querySupabaseTable  - テーブルへの汎用GETラッパー（Phase 4追加）
  *
- * @version 1.0
+ * @version 1.1 (Phase 4: querySupabaseTable 追加)
  */
 
 /**
