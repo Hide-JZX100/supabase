@@ -197,3 +197,70 @@ function logErrorsToSheet(errorDetails) {
         console.error('エラーログ記録中にエラーが発生:', error.message);
     }
 }
+
+/**
+ * リトライ統計をスプレッドシートに記録
+ */
+function logRetryStatsToSheet() {
+    // 【記録スキップ条件】
+    // 条件1: リトライ総回数が0回（正常完了）
+    if (retryStats.totalRetries === 0) {
+        logWithLevel(LOG_LEVEL.DETAILED, 'リトライ0回: ログ記録スキップ');
+        return;
+    }
+
+    try {
+        const { SPREADSHEET_ID } = getSpreadsheetConfig();
+        const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+        let retryLogSheet = spreadsheet.getSheetByName('リトライログ');
+
+        if (!retryLogSheet) {
+            retryLogSheet = spreadsheet.insertSheet('リトライログ');
+            const headers = [
+                '実行日時', '総リトライ回数', 'リトライ発生バッチ数',
+                '最大リトライ回数', 'リトライ発生率(%)', '備考'
+            ];
+            retryLogSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+            retryLogSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+            retryLogSheet.getRange(1, 1, 1, headers.length).setBackground('#f3f3f3');
+        }
+
+        const totalBatches = retryStats.retriesByBatch.length;
+        const retryRate = totalBatches > 0
+            ? (retryStats.batchesWithRetry / totalBatches * 100).toFixed(1)
+            : 0;
+
+        // ★★★ 条件2: リトライ発生率が0% ★★★
+        // 【記録スキップ条件】
+        // 条件2: リトライ発生率が0%（統計上意味のないデータを蓄積しない）
+        if (parseFloat(retryRate) === 0) {
+            logWithLevel(LOG_LEVEL.DETAILED, 'リトライ発生率0%: ログ記録スキップ');
+            return;
+        }
+
+        let note = '';
+        if (retryRate > 10) {
+            note = 'リトライ率高（要確認）';
+        } else if (retryStats.totalRetries > 0) {
+            note = '正常（軽微なリトライ）';
+        }
+
+        const logRow = [
+            new Date(),
+            retryStats.totalRetries,
+            retryStats.batchesWithRetry,
+            retryStats.maxRetriesUsed,
+            retryRate,
+            note
+        ];
+
+        const lastRow = retryLogSheet.getLastRow();
+        retryLogSheet.getRange(lastRow + 1, 1, 1, 6).setValues([logRow]);
+        retryLogSheet.getRange(lastRow + 1, 1, 1, 1).setNumberFormat('yyyy/mm/dd hh:mm:ss');
+
+        logWithLevel(LOG_LEVEL.SUMMARY, 'リトライ統計をシートに記録しました');
+
+    } catch (error) {
+        logError('リトライログ記録エラー:', error.message);
+    }
+}
