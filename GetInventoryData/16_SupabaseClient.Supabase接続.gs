@@ -9,6 +9,7 @@
  * ### 主要関数
  * @see getSupabaseConfig
  * @see callSupabaseRpc
+ * @see querySupabaseTable - テーブルへのGETリクエスト汎用ラッパー（Phase 4追加）
  *
  * @version 1.0
  */
@@ -133,4 +134,62 @@ function callSupabaseRpc(functionName, params) {
   const finalErrorMsg = 'Supabase RPC 呼び出し失敗（' + maxRetries + '回試行）: ' + lastError.message;
   logError('  ✗✗✗ ' + finalErrorMsg);
   throw new Error(finalErrorMsg);
+}
+
+/**
+ * Supabase REST API テーブルへの GET リクエスト汎用ラッパー
+ *
+ * 【処理フロー】
+ * 1. getSupabaseConfig() からURLとAPIキーを取得
+ * 2. クエリパラメータ（queryParams）を URL エンコードし、クエリ文字列を構築
+ * 3. 送信先 URL を構築（テーブル名もエンコード）
+ * 4. UrlFetchApp.fetch() で GET リクエストを送信
+ * 5. ステータスコード 200 を正常とし、レスポンスボディを JSON パースしてデータを返却
+ * 6. エラー時は logError() で記録後に例外をスロー
+ *
+ * @param {string} tableName   - テーブル名（日本語名も可）
+ * @param {Object} queryParams - クエリパラメータ { 列名: 'operator.value', ... }
+ * @return {Object} 返却オブジェクト { success: boolean, statusCode: number, data: Array }
+ * @throws {Error} HTTPエラーまたは通信エラーの場合
+ */
+function querySupabaseTable(tableName, queryParams) {
+  try {
+    const config = getSupabaseConfig();
+
+    // クエリ文字列を組み立てる
+    const queryString = Object.keys(queryParams)
+      .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(queryParams[key]))
+      .join('&');
+
+    const url = config.url + '/rest/v1/' + encodeURIComponent(tableName) + '?' + queryString;
+
+    const options = {
+      method: 'get',
+      headers: {
+        'apikey': config.key,
+        'Authorization': 'Bearer ' + config.key,
+        'Accept': 'application/json'
+      },
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(url, options);
+    const statusCode = response.getResponseCode();
+    const body = response.getContentText();
+
+    if (statusCode === 200) {
+      const data = JSON.parse(body);
+      return {
+        success: true,
+        statusCode: statusCode,
+        data: data
+      };
+    } else {
+      const message = 'Supabase GET エラー (' + tableName + '): ステータス ' + statusCode + ' - ' + body;
+      throw new Error(message);
+    }
+  } catch (error) {
+    logError('Supabase GET 通信エラー (' + tableName + '):', error.message);
+    throw error;
+  }
 }
