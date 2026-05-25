@@ -173,3 +173,46 @@ function buildStockPayload(inventoryDataMap) {
   return payload;
 }
 
+/**
+ * 在庫データを Supabase にバッチ単位で upsert する
+ *
+ * buildStockPayload で変換された配列を、upsert_ne_stock_data RPC を用いて
+ * Supabase に送信します。失敗時は例外を投げず、エラーログを記録して
+ * バッチ処理ループ全体の継続性を確保します。
+ *
+ * 【処理フロー】
+ * 1. inventoryDataMap が空の場合は即座に成功結果を返却
+ * 2. buildStockPayload() を呼び出して送信ペイロードを構築
+ * 3. callSupabaseRpc('upsert_ne_stock_data', { json_data: payload }) を実行
+ *    - 処理時間をミリ秒単位で計測（SRE 観点での監視用）
+ * 4. 成功時は { records, success: true }、失敗時は logError 記録後に { records, success: false } を返却
+ *
+ * @param {Map} inventoryDataMap - バッチ1回分の在庫データ Map（最大1,000件）
+ * @return {Object} 処理結果オブジェクト { records: number, success: boolean }
+ */
+function upsertStockToSupabase(inventoryDataMap) {
+  if (!inventoryDataMap || inventoryDataMap.size === 0) {
+    return { records: 0, success: true };
+  }
+
+  const payload = buildStockPayload(inventoryDataMap);
+  const startTime = new Date();
+
+  try {
+    callSupabaseRpc('upsert_ne_stock_data', { json_data: payload });
+    
+    const duration = new Date() - startTime;
+    logWithLevel(LOG_LEVEL.SUMMARY, '  Supabase在庫更新完了: ' + payload.length + '件 (' + duration + 'ms)');
+    
+    return {
+      records: payload.length,
+      success: true
+    };
+  } catch (error) {
+    logError('Supabase在庫更新エラー: ' + error.message);
+    return {
+      records: payload.length,
+      success: false
+    };
+  }
+}
