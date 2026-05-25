@@ -7,16 +7,20 @@
  * - **参照元**: 10_Main.エントリーポイント.gs, 99_Tests.テスト.gs
  * - **参照先**: 16_SupabaseClient.Supabase接続.gs, 12_Logger.ログ管理.gs, 11_Config.設定管理.gs
  *
- * ### 主要関数
- * @see buildSupabasePayload
- * @see upsertInventoryToSupabase
+ * ### Phase 2（商品マスタ全件書き込み）
+ * @see buildSupabasePayload      - goodsMapをSupabase用配列に変換
+ * @see upsertInventoryToSupabase - 商品マスタデータを全件upsert（500件チャンク）
  *
- * ### Phase 4 追加関数（差分取得）
- * @see getChangedInventorySince - 指定日時以降に更新された商品データを取得
- * @see saveLastExecutedAt      - 最終実行日時をスクリプトプロパティに保存
- * @see loadLastExecutedAt      - 最終実行日時をスクリプトプロパティから読み出す
+ * ### Phase 3（在庫マスタ差分書き込み）
+ * @see buildStockPayload         - inventoryDataMapをSupabase用配列に変換
+ * @see upsertStockToSupabase     - 在庫数値をバッチ単位でupsert
  *
- * @version 1.0
+ * ### Phase 4（差分取得）
+ * @see getChangedInventorySince  - 指定日時以降に更新された商品を取得
+ * @see saveLastExecutedAt        - 最終実行日時をプロパティに保存
+ * @see loadLastExecutedAt        - 最終実行日時をプロパティから読み出す
+ *
+ * @version 1.3 (Phase 4: 差分取得機能追加)
  */
 
 // ============================================================================
