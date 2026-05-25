@@ -861,3 +861,68 @@ function testSupabaseRpcCall() {
     }
 }
 
+/**
+ * buildSupabasePayload() の変換ロジック単体テスト
+ *
+ * NE APIから3件の商品データを取得し、buildSupabasePayload() を使って
+ * Supabase へのインポート用データ構造に正しく変換されるかを確認します。
+ * キー名が日本語に変換されているか、型変換（JANコードが数値/null、その他が数値）が正しく行われているかを確認します。
+ *
+ * 【処理フロー】
+ * 1. getStoredTokens() でトークンを取得
+ * 2. fetchGoodsDataOnePage_(tokens, 3, 0) で NE API から商品データを3件取得
+ * 3. 取得データを Map に格納
+ * 4. buildSupabasePayload(goodsMap) を呼び出して変換
+ * 5. 変換前後の値をコンソールに出力して目視確認できるようにする
+ */
+function testBuildSupabasePayload() {
+    console.log('=== buildSupabasePayload テスト ===\n');
+
+    try {
+        const tokens = getStoredTokens();
+        
+        console.log('NE APIから3件取得中...');
+        const { data, updatedTokens } = fetchGoodsDataOnePage_(tokens, 3, 0);
+
+        // テスト中も最新のトークンを保持するように修正
+        if (updatedTokens) {
+            updateStoredTokens(updatedTokens.accessToken, updatedTokens.refreshToken);
+        }
+
+        if (!data || data.length === 0) {
+            console.log('❌ NE APIからデータが取得できませんでした');
+            return;
+        }
+
+        const testMap = new Map();
+        data.forEach(item => testMap.set(item.goods_id, item));
+
+        const payload = buildSupabasePayload(testMap);
+
+        console.log(`取得件数: ${testMap.size}件\n`);
+
+        payload.forEach((converted, index) => {
+            const original = data[index];
+            console.log(`--- [データ ${index + 1}] 商品コード: ${converted['商品コード']} ---`);
+            console.log(`  変換前 (NE API形式):`);
+            console.log(`    goods_id                  : ${original.goods_id} (型: ${typeof original.goods_id})`);
+            console.log(`    goods_name                : ${original.goods_name} (型: ${typeof original.goods_name})`);
+            console.log(`    goods_jan_code            : "${original.goods_jan_code}" (型: ${typeof original.goods_jan_code})`);
+            console.log(`    stock_quantity            : "${original.stock_quantity}" (型: ${typeof original.stock_quantity})`);
+            console.log(`    stock_allocation_quantity : "${original.stock_allocation_quantity}" (型: ${typeof original.stock_allocation_quantity})`);
+            
+            console.log(`  変換後 (Supabase形式):`);
+            console.log(`    商品コード : ${converted['商品コード']} (型: ${typeof converted['商品コード']})`);
+            console.log(`    商品名     : ${converted['商品名']} (型: ${typeof converted['商品名']})`);
+            console.log(`    JANコード  : ${converted['JANコード']} (型: ${typeof converted['JANコード']})`);
+            console.log(`    在庫数     : ${converted['在庫数']} (型: ${typeof converted['在庫数']})`);
+            console.log(`    引当数     : ${converted['引当数']} (型: ${typeof converted['引当数']})`);
+            console.log('');
+        });
+
+        console.log('✓ 変換テスト完了');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
