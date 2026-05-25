@@ -559,3 +559,67 @@ function phase1_fetchGoodsData_(tokens, limit, offset) {
     return { responseData, duration };
 }
 
+// ============================================================================
+// Step 1: フィルタ動作確認（1件取得）
+// ============================================================================
+
+/**
+ * Phase1 Step1: フィルタ動作確認
+ *
+ * 【確認内容】
+ * - goods_location-nlikeornull で xxxxxx を含む商品が除外されているか
+ * - 空欄ロケーションの商品が含まれているか
+ * - 全フィールドが正しく取得できているか
+ *
+ * 【まずこの関数から実行してください】
+ */
+function testPhase1_Step1() {
+    console.log('=== Phase1 Step1: フィルタ動作確認 ===\n');
+
+    try {
+        const tokens = getStoredTokens();
+        const { responseData, duration } = phase1_fetchGoodsData_(tokens, 1, 0);
+
+        console.log(`処理時間: ${duration}秒`);
+        console.log(`APIレスポンス: ${responseData.result}\n`);
+
+        if (responseData.result !== 'success') {
+            console.log('❌ APIエラー');
+            console.log(`メッセージ: ${responseData.message || '不明'}`);
+            return;
+        }
+
+        const data = responseData.data;
+
+        if (!data || data.length === 0) {
+            console.log('❌ データが0件でした');
+            console.log('フィルタ条件が厳しすぎる可能性があります');
+            return;
+        }
+
+        // フィールド取得確認
+        const sample = data[0];
+        console.log('【フィールド取得確認】');
+        console.log(`  goods_id        : ${sample.goods_id !== undefined ? '✓' : '❌'} → ${sample.goods_id}`);
+        console.log(`  goods_name      : ${sample.goods_name !== undefined ? '✓' : '❌'} → ${sample.goods_name}`);
+        console.log(`  goods_jan_code  : ${sample.goods_jan_code !== undefined ? '✓' : '❌'} → ${sample.goods_jan_code}`);
+        console.log(`  goods_location  : ${sample.goods_location !== undefined ? '✓' : '❌'} → "${sample.goods_location}"`);
+        console.log(`  stock_quantity  : ${sample.stock_quantity !== undefined ? '✓' : '❌'} → ${sample.stock_quantity}`);
+
+        // フィルタ確認
+        console.log('\n【フィルタ確認】');
+        const location = sample.goods_location || '';
+        if (location.includes('xxxxxx')) {
+            console.log('❌ xxxxxxを含む商品が取得されています（フィルタが機能していません）');
+        } else {
+            console.log(`✓ xxxxxxを含まない商品のみ取得されています`);
+            console.log(`  ロケーション値: "${location}" ${location === '' ? '（空欄）' : ''}`);
+        }
+
+        console.log('\n✓ Step1 完了 → 問題なければ testPhase1_Step2() を実行してください');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
+
