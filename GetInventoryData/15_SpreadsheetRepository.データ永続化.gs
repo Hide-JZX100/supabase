@@ -432,3 +432,100 @@ function finalRetryTest() {
 
     console.log('\n=== テスト完了 ===');
 }
+
+/**
+ * =============================================================================
+ * Phase 4: 全件データ書き込み関数
+ * =============================================================================
+ *
+ * 【追加内容】
+ * - writeAllInventoryData() : ヘッダー行を書き込んだ後、
+ *                             全商品データをA〜L列に一括書き込みする
+ * - testPhase4_WriteTest()  : テスト用スプレッドシートで書き込み動作を確認する
+ *
+ * 【既存コードへの影響】
+ * 追記のみのため既存関数への影響はありません
+ *
+ * 【書き込み仕様】
+ * - 1行目: ヘッダー行（固定）を毎回上書き
+ * - 2行目以降: 既存データを全削除してから全件書き込み
+ * - setValues() を2回（ヘッダー1回＋データ1回）で完結させる設計
+ *   → SpreadsheetApp への呼び出し回数を最小化して処理速度を向上
+ * =============================================================================
+ */
+
+// ----------------------------------------------------------------------------
+// 定数定義
+// ----------------------------------------------------------------------------
+
+// スプレッドシートのヘッダー行（1行目）
+// COLUMNS 定義（11_Config.gs）の列順序と対応
+const INVENTORY_SHEET_HEADERS = [
+    '商品コード',       // A列
+    '商品名',           // B列
+    '在庫数',           // C列
+    '引当数',           // D列
+    'フリー在庫数',     // E列
+    '予約在庫数',       // F列
+    '予約引当数',       // G列
+    '予約フリー在庫数', // H列
+    '不良在庫数',       // I列
+    '発注残数',         // J列
+    '欠品数',           // K列
+    'JANコード'         // L列
+];
+
+// ----------------------------------------------------------------------------
+// 公開関数
+// ----------------------------------------------------------------------------
+
+/**
+ * 全商品データをスプレッドシートに一括書き込み
+ *
+ * 【処理フロー】
+ * 1. シートの2行目以降を全削除（既存データをクリア）
+ * 2. 1行目にヘッダー行を書き込み
+ * 3. 2行目以降にデータを一括書き込み（setValues() 1回で完結）
+ *
+ * 【削除範囲について】
+ * deleteRows() ではなく clearContents() を使用する
+ * deleteRows() は行数が多い場合に処理が遅くなるため
+ * clearContents() で内容のみ削除してから上書きする方式を採用
+ *
+ * @param {Sheet}  sheet - 書き込み対象のシートオブジェクト
+ * @param {Array}  rows  - buildInventoryDataRows() の返却値（2次元配列）
+ * @return {Object}      - { headerWritten: boolean, dataRows: number }
+ */
+function writeAllInventoryData(sheet, rows) {
+    logWithLevel(LOG_LEVEL.SUMMARY, `シート書き込み開始: ${rows.length}行`);
+
+    // Step 1: 2行目以降の既存データをクリア
+    // getLastRow() が1以下の場合（データなし）はクリア不要
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+        sheet.getRange(2, 1, lastRow - 1, 12).clear({ contentsOnly: true });
+        logWithLevel(LOG_LEVEL.SUMMARY, `既存データ削除完了: ${lastRow - 1}行`);
+    }
+
+    // Step 2: ヘッダー行を1行目に書き込み
+    sheet.getRange(1, 1, 1, INVENTORY_SHEET_HEADERS.length)
+        .setValues([INVENTORY_SHEET_HEADERS]);
+    logWithLevel(LOG_LEVEL.SUMMARY, 'ヘッダー行書き込み完了');
+
+    // Step 3: データを2行目以降に一括書き込み
+    // データが0件の場合は書き込みをスキップ
+    if (rows.length === 0) {
+        logWithLevel(LOG_LEVEL.SUMMARY, 'データが0件のため書き込みをスキップ');
+        return { headerWritten: true, dataRows: 0 };
+    }
+
+    sheet.getRange(2, 1, rows.length, INVENTORY_SHEET_HEADERS.length)
+        .setValues(rows);
+
+    logWithLevel(LOG_LEVEL.SUMMARY, `データ書き込み完了: ${rows.length}行`);
+
+    return {
+        headerWritten: true,
+        dataRows: rows.length
+    };
+}
