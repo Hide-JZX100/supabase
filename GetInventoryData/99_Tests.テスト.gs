@@ -13,14 +13,20 @@
  *
  * ### 推奨実行順序
  * #### 初回セットアップ時
- * 1. `verifyConfiguration()` : 設定値・トークンの確認
- * 2. `testRetryFunction()` : API接続とリトライ動作の確認
- * 3. `showSREDashboard()` : システム全体の健全性確認
+ * 1. `verifyConfiguration()`         : 設定値・トークンの確認
+ * 2. `testSupabaseConnection()`       : Supabase接続の確認
+ * 3. `testSupabaseRpcCall()`          : Supabase RPC動作確認
+ * 4. `testRetryFunction()`            : NE API接続とリトライ動作の確認
+ * 5. `testUpsertInventoryToSupabase()`: 商品マスタ→Supabase書き込みテスト
+ * 6. `testUpsertStockToSupabase()`    : 在庫マスタ→Supabase書き込みテスト
+ * 7. `testGetChangedInventorySince()` : 差分取得の確認
+ * 8. `showSREDashboard()`             : システム全体の健全性確認
  *
  * #### トラブル発生時
- * 1. `verifyConfiguration()` : 設定値の再確認
- * 2. `testRetryFunction()` : API応答の確認
- * 3. `showSREDashboard()` : エラーログ・リトライ統計の確認
+ * 1. `verifyConfiguration()`         : 設定値の再確認
+ * 2. `testSupabaseConnection()`       : Supabase接続の再確認
+ * 3. `testRetryFunction()`            : NE API応答の確認
+ * 4. `showSREDashboard()`             : エラーログ・リトライ統計の確認
  *
  * ### 主要機能
  * - **動作確認**: `testRetryFunction`, `verifyConfiguration`
@@ -33,7 +39,7 @@
  * - `testRetryFunction()` は実際にAPIを呼び出すため、レート制限に注意してください。
  * - スプレッドシートへの書き込みを伴うテストは本番データへの影響に注意してください。
  *
- * @version 2.1
+ * @version 2.4 (Phase 4: 差分取得テスト追加)
  * @see testRetryFunction
  * @see verifyConfiguration
  * @see showSREDashboard
