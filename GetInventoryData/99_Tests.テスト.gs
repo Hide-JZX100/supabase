@@ -186,3 +186,42 @@ function showSREDashboard() {
         console.error('ダッシュボード表示エラー:', error.message);
     }
 }
+
+/**
+ * 設定確認（デプロイ前・トラブル時の疎通確認）
+ *
+ * 以下の2項目を確認してコンソールに結果を出力する
+ * 確認1: ACCESS_TOKEN・REFRESH_TOKEN が取得できるか
+ * 確認2: SPREADSHEET_ID・SHEET_NAME でシートにアクセスできるか
+ *
+ * 初回セットアップ時やトークン再取得後に実行することを推奨する
+ */
+function verifyConfiguration() {
+    console.log('=== 設定確認 ===');
+
+    // プロパティチェック
+    try {
+        const tokens = getStoredTokens();
+        console.log('✅ 認証トークン: 設定済み');
+        console.log(`   (Access Token末尾: ...${tokens.accessToken.slice(-5)})`);
+    } catch (e) {
+        console.error('❌ 認証トークン: 未設定または取得エラー');
+    }
+
+    // シートアクセスチェック
+    try {
+        const config = getSpreadsheetConfig();
+        const ss = SpreadsheetApp.openById(config.SPREADSHEET_ID);
+        const sheet = ss.getSheetByName(config.SHEET_NAME);
+        if (sheet) {
+            console.log(`✅ スプレッドシート: 接続OK (シート名: ${config.SHEET_NAME})`);
+            console.log(`   データ行数: ${sheet.getLastRow()}行`);
+        } else {
+            console.error(`❌ シートが見つかりません: ${config.SHEET_NAME}`);
+        }
+    } catch (e) {
+        console.error(`❌ スプレッドシート接続エラー: ${e.message}`);
+    }
+
+    console.log('================');
+}
