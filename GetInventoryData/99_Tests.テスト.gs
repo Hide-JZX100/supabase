@@ -785,3 +785,27 @@ function testPhase1_Step3() {
     }
 }
 
+/**
+ * Supabaseへの接続と設定値ロードテスト
+ *
+ * getSupabaseConfig() を呼び出し、URL と API キーが正常に取得できるか確認します。
+ * セキュリティのため、APIキーは末尾の5文字のみを出力します。
+ *
+ * 【処理フロー】
+ * 1. getSupabaseConfig() から設定情報を取得
+ * 2. 取得した設定情報をログに出力
+ */
+function testSupabaseConnection() {
+    console.log('=== Supabase 接続・設定確認テスト ===');
+    try {
+        const config = getSupabaseConfig();
+        const maskedKey = config.key ? '...' + config.key.slice(-5) : '未設定';
+        
+        console.log(`✅ SUPABASE_URL: ${config.url}`);
+        console.log(`✅ SUPABASE_KEY: 末尾5文字 = ${maskedKey}`);
+        console.log('✓ 設定値の読み込みテストが正常に完了しました。');
+    } catch (error) {
+        console.error('❌ 設定取得エラー:', error.message);
+    }
+}
+
