@@ -203,3 +203,188 @@ function getBatchStockDataWithRetry(goodsCodeList, tokens, batchNumber, maxRetri
 
     throw new Error(errorMessage);
 }
+
+/**
+ * =============================================================================
+ * Phase 2: 商品マスタAPI全件取得関数
+ * =============================================================================
+ *
+ * 【追加内容】
+ * - fetchAllGoodsData()      : ページネーションで全件取得するメイン関数
+ * - fetchGoodsDataOnePage_() : 1ページ分のAPIリクエスト（内部用）
+ *
+ * 【既存コードへの影響】
+ * 追記のみのため既存関数への影響はありません
+ *
+ * 【取得条件】
+ * - ロケーションに xxxxxx を含む商品を除外
+ * - ロケーションが空欄の商品は取得対象に含む
+ * - 1ページ1000件、4ページ（約3,200件）を想定
+ *
+ * 【返却データ構造】
+ * Map<goods_id, {
+ *   goods_id, goods_name, goods_jan_code,
+ *   stock_quantity, stock_allocation_quantity,
+ *   stock_free_quantity, stock_advance_order_quantity,
+ *   stock_advance_order_allocation_quantity,
+ *   stock_advance_order_free_quantity,
+ *   stock_defective_quantity, stock_remaining_order_quantity,
+ *   stock_out_quantity
+ * }>
+ * =============================================================================
+ */
+
+// ----------------------------------------------------------------------------
+// 定数定義
+// ----------------------------------------------------------------------------
+
+// xxxxxxを含む商品を除外するフィルタ値
+// nlikeornull: NULLまたは LIKE条件に合わない値 → 空欄も取得対象に含む
+const LOCATION_EXCLUDE_PATTERN = '%xxxxxx%';
+
+// 取得フィールド一覧
+// goods_location はフィルタ確認用に含めない（本番では不要）
+const GOODS_FETCH_FIELDS = [
+    'goods_id',
+    'goods_name',
+    'goods_jan_code',
+    'stock_quantity',
+    'stock_allocation_quantity',
+    'stock_free_quantity',
+    'stock_advance_order_quantity',
+    'stock_advance_order_allocation_quantity',
+    'stock_advance_order_free_quantity',
+    'stock_defective_quantity',
+    'stock_remaining_order_quantity',
+    'stock_out_quantity'
+].join(',');
+
+// ----------------------------------------------------------------------------
+// 公開関数
+// ----------------------------------------------------------------------------
+
+/**
+ * 商品マスタAPIで全件取得（ページネーション対応）
+ *
+ * 【処理フロー】
+ * 1. offset=0 から 1000件ずつ取得
+ * 2. 返却件数が limit 未満になったら最終ページと判定して終了
+ * 3. 全データを goods_id をキーとした Map で返す
+ *
+ * @param  {Object} tokens - 認証トークン { accessToken, refreshToken }
+ * @return {Map}           - 商品データマップ (key: goods_id, value: 商品データ)
+ * @throws {Error}         - 全ページ取得中にエラーが発生した場合
+ */
+function fetchAllGoodsData(tokens) {
+    const LIMIT = MAX_ITEMS_PER_CALL; // 11_Config.gs で定義済みの 1000
+    let offset = 0;
+    let page = 1;
+    let hasNext = true;
+    const goodsMap = new Map();
+
+    logWithLevel(LOG_LEVEL.SUMMARY, `商品マスタAPI全件取得開始（フィルタ: xxxxxx除外）`);
+
+    while (hasNext) {
+        logWithLevel(LOG_LEVEL.SUMMARY, `  ${page}ページ目取得中 (offset=${offset})`);
+
+        const { data, updatedTokens } = fetchGoodsDataOnePage_(tokens, LIMIT, offset);
+
+        // NE APIはリクエストのたびにトークンを更新して返す仕様
+        // 変更がある場合のみ updateStoredTokens() でプロパティを更新する
+        if (updatedTokens) {
+            updateStoredTokens(updatedTokens.accessToken, updatedTokens.refreshToken);
+            tokens.accessToken = updatedTokens.accessToken;
+            tokens.refreshToken = updatedTokens.refreshToken;
+        }
+
+        // 取得データを Map に格納
+        data.forEach(item => goodsMap.set(item.goods_id, item));
+
+        logWithLevel(LOG_LEVEL.SUMMARY, `  取得: ${data.length}件 | 累計: ${goodsMap.size}件`);
+
+        // 返却件数が limit 未満 → 最終ページ判定
+        if (data.length < LIMIT) {
+            hasNext = false;
+            logWithLevel(LOG_LEVEL.SUMMARY, `  最終ページ到達`);
+        } else {
+            offset += LIMIT;
+            page++;
+
+            // API負荷分散のため待機（11_Config.gs の API_WAIT_TIME を流用）
+            Utilities.sleep(API_WAIT_TIME);
+        }
+    }
+
+    logWithLevel(LOG_LEVEL.SUMMARY, `商品マスタAPI全件取得完了: ${goodsMap.size}件`);
+    return goodsMap;
+}
+
+// ----------------------------------------------------------------------------
+// 内部関数（_ サフィックスで内部専用であることを示す）
+// ----------------------------------------------------------------------------
+
+/**
+ * 商品マスタAPI 1ページ分リクエスト（内部関数）
+ *
+ * @param  {Object} tokens - 認証トークン
+ * @param  {number} limit  - 取得件数（最大1000）
+ * @param  {number} offset - 取得開始位置（0始まり）
+ * @return {Object}        - { data: Array, updatedTokens: Object|null }
+ * @throws {Error}         - APIエラーまたは通信エラーの場合
+ */
+function fetchGoodsDataOnePage_(tokens, limit, offset) {
+    const url = `${NE_API_URL}/api_v1_master_goods/search`;
+
+    const payload = {
+        'access_token': tokens.accessToken,
+        'refresh_token': tokens.refreshToken,
+        'fields': GOODS_FETCH_FIELDS,
+        'goods_location-nlikeornull': LOCATION_EXCLUDE_PATTERN,
+        'limit': limit.toString(),
+        'offset': offset.toString()
+    };
+
+    const options = {
+        'method': 'POST',
+        'headers': { 'Content-Type': 'application/x-www-form-urlencoded' },
+        'payload': Object.keys(payload)
+            .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(payload[key]))
+            .join('&')
+    };
+
+    try {
+        const response = UrlFetchApp.fetch(url, options);
+        const responseData = JSON.parse(response.getContentText());
+
+        if (responseData.result !== 'success') {
+            throw new Error(
+                `商品マスタAPI エラー: ${responseData.message || 'Unknown error'} (offset=${offset})`
+            );
+        }
+
+        // トークン更新の差分チェック
+        const updatedTokens = (
+            responseData.access_token &&
+            responseData.refresh_token &&
+            (responseData.access_token !== tokens.accessToken ||
+                responseData.refresh_token !== tokens.refreshToken)
+        ) ? {
+            accessToken: responseData.access_token,
+            refreshToken: responseData.refresh_token
+        } : null;
+
+        return {
+            data: responseData.data || [],
+            updatedTokens
+        };
+
+    } catch (error) {
+        logAPIErrorDetail(
+            '商品マスタAPI',
+            { offset, limit },
+            null,
+            error
+        );
+        throw error;
+    }
+}
