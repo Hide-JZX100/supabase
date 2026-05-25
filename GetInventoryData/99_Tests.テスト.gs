@@ -1037,3 +1037,56 @@ function testBuildStockPayload() {
     }
 }
 
+/**
+ * upsertStockToSupabase() の結合テスト
+ *
+ * スプレッドシートから先頭10件の商品コードを取得し、在庫マスタAPIからデータを取得後、
+ * upsertStockToSupabase() を実行します。
+ * 送信結果（成功・失敗・件数）を確認します。
+ *
+ * 【処理フロー】
+ * 1. getSpreadsheetConfig() で設定を取得し、シートの A 列から先頭10件の商品コードを取得
+ * 2. getStoredTokens() でトークンを取得
+ * 3. getBatchInventoryDataWithRetry() で在庫マスタデータを取得
+ * 4. upsertStockToSupabase(inventoryDataMap) を呼び出して Supabase へ一括送信
+ * 5. 送信件数および成否をコンソールに出力
+ */
+function testUpsertStockToSupabase() {
+    console.log('=== Supabase 在庫マスタ upsert テスト（10件） ===\n');
+
+    try {
+        // スプレッドシートから先頭10件の商品コードを取得
+        const { SPREADSHEET_ID, SHEET_NAME } = getSpreadsheetConfig();
+        const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+        const lastRow = sheet.getLastRow();
+        const codes = sheet.getRange(2, 1, Math.min(10, lastRow - 1), 1)
+            .getValues().map(r => r[0]).filter(c => c).slice(0, 10);
+
+        console.log(`テスト対象: ${codes.join(', ')}\n`);
+
+        const tokens = getStoredTokens();
+
+        // 在庫マスタAPIから取得
+        console.log('在庫マスタAPIから取得中...');
+        const inventoryDataMap = getBatchInventoryDataWithRetry(codes, tokens, 0);
+        console.log(`取得件数: ${inventoryDataMap.size}件\n`);
+
+        // Supabaseへ書き込み
+        console.log('Supabaseへ書き込み中...');
+        const result = upsertStockToSupabase(inventoryDataMap);
+
+        // 結果出力
+        console.log('\n=== テスト結果 ===');
+        console.log(`レコード数  : ${result.records}件`);
+        console.log(`成功        : ${result.success ? '✓' : '✗'}`);
+
+        console.log('\n【Supabaseダッシュボードで以下を確認してください】');
+        console.log('Table Editor → NE_InventoryData');
+        console.log('上記商品コードの在庫数が更新されているか確認してください。');
+        console.log('商品名・JANコードが変わっていないことも確認してください。');
+        console.log('在庫数が変化していない商品は 更新日時 が変わっていないはずです。');
+
+    } catch (error) {
+        console.error(`テストエラー: ${error.message}`);
+    }
+}
