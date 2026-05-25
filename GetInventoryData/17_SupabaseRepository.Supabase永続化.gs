@@ -11,6 +11,11 @@
  * @see buildSupabasePayload
  * @see upsertInventoryToSupabase
  *
+ * ### Phase 4 追加関数（差分取得）
+ * @see getChangedInventorySince - 指定日時以降に更新された商品データを取得
+ * @see saveLastExecutedAt      - 最終実行日時をスクリプトプロパティに保存
+ * @see loadLastExecutedAt      - 最終実行日時をスクリプトプロパティから読み出す
+ *
  * @version 1.0
  */
 
@@ -20,6 +25,9 @@
 
 /** 1回のRPC呼び出しで送信するレコード数 */
 const SUPABASE_CHUNK_SIZE = 500;
+
+/** Supabase REST API の1回のクエリで取得するレコード数上限 */
+const SUPABASE_QUERY_LIMIT = 5000;
 
 // ============================================================================
 // 公開関数
@@ -231,4 +239,89 @@ function upsertStockToSupabase(inventoryDataMap) {
       success: false
     };
   }
+}
+
+/**
+ * 指定日時以降に更新された在庫データを取得する
+ *
+ * 【処理フロー】
+ * 1. 引数の日時を ISO 8601 文字列に変換する
+ * 2. querySupabaseTable() で 更新日時 >= since の条件でフィルタリング
+ * 3. 取得データを配列で返す（0件の場合は空配列）
+ *
+ * 【取得上限について】
+ * Supabase REST API のデフォルト上限は1,000件。
+ * SUPABASE_QUERY_LIMIT 定数で調整可能。
+ * 商品数が1,000件を超える場合は将来的にページネーション対応が必要。
+ *
+ * @param  {Date|string} since - 取得基準日時（この日時以降に更新された商品を取得）
+ * @return {Array} 変化した商品データの配列
+ * @throws {Error} Supabase への接続エラーの場合
+ */
+function getChangedInventorySince(since) {
+  const sinceStr = (since instanceof Date) ? since.toISOString() : since;
+
+  logWithLevel(LOG_LEVEL.MINIMAL, '差分取得開始: ' + sinceStr + ' 以降に更新された商品');
+
+  try {
+    const result = querySupabaseTable('NE_InventoryData', {
+      '更新日時': 'gte.' + sinceStr,
+      'order': '更新日時.desc',
+      'limit': SUPABASE_QUERY_LIMIT.toString()
+    });
+
+    logWithLevel(LOG_LEVEL.MINIMAL, '差分取得完了: ' + result.data.length + '件');
+    return result.data;
+
+  } catch (error) {
+    logError('差分取得エラー:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * 最終実行日時をスクリプトプロパティに保存する
+ *
+ * 保存キー: SUPABASE_LAST_EXECUTED_AT
+ * 保存形式: ISO 8601 文字列（UTC）
+ *
+ * 【使用タイミング】
+ * getChangedInventorySince() で差分取得を行った直後に呼び出す。
+ * 次回実行時に loadLastExecutedAt() で読み出して基準日時として使用する。
+ *
+ * @return {string} 保存されたISO 8601文字列
+ */
+function saveLastExecutedAt() {
+  const now = new Date();
+  const isoString = now.toISOString();
+  PropertiesService.getScriptProperties()
+    .setProperty('SUPABASE_LAST_EXECUTED_AT', isoString);
+  logWithLevel(LOG_LEVEL.MINIMAL, '最終実行日時を保存: ' + isoString);
+  return isoString;
+}
+
+/**
+ * 最終実行日時をスクリプトプロパティから読み出す
+ *
+ * 【フォールバックについて】
+ * 初回実行時や手動でプロパティを削除した場合など、
+ * 保存値が存在しない場合は fallbackHours 時間前の日時を返す。
+ * デフォルトは 2時間前（在庫更新の実行間隔を考慮）。
+ *
+ * @param  {number} fallbackHours - 未保存時のフォールバック時間数（デフォルト: 2）
+ * @return {Date} 最終実行日時
+ */
+function loadLastExecutedAt(fallbackHours = 2) {
+  const saved = PropertiesService.getScriptProperties()
+    .getProperty('SUPABASE_LAST_EXECUTED_AT');
+
+  if (saved) {
+    logWithLevel(LOG_LEVEL.MINIMAL, '最終実行日時を読み込み: ' + saved);
+    return new Date(saved);
+  }
+
+  // 未保存時はフォールバック
+  const fallback = new Date(Date.now() - fallbackHours * 60 * 60 * 1000);
+  logWithLevel(LOG_LEVEL.MINIMAL, '最終実行日時が未保存のため ' + fallbackHours + '時間前 を使用: ' + fallback.toISOString());
+  return fallback;
 }
