@@ -297,3 +297,48 @@ function recordExecutionTimestamp() {
         console.error('実行日時の記録中にエラーが発生しました:', error.message);
     }
 }
+
+/**
+ * リトライログの動作テスト
+ */
+function testRetryLogging() {
+    console.log('=== リトライログ動作テスト ===\n');
+
+    // ケース1: リトライ0回の場合
+    console.log('【ケース1】リトライ0回');
+    resetRetryStats();
+    logRetryStatsToSheet();
+    console.log('→ ログに記録されましたか？(シートを確認)\n');
+
+    // ケース2: リトライ1回の場合
+    console.log('【ケース2】リトライ1回');
+    resetRetryStats();
+    recordRetryAttempt(1, 2);  // バッチ1で2回目の試行
+    showRetryStats();
+    logRetryStatsToSheet();
+    console.log('→ ログに記録されましたか？(シートを確認)\n');
+
+    // ケース3: 現在のリトライログシートの状態確認
+    console.log('【ケース3】現在のログ確認');
+    const { SPREADSHEET_ID } = getSpreadsheetConfig();
+    const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const retryLogSheet = spreadsheet.getSheetByName('リトライログ');
+
+    if (retryLogSheet) {
+        const lastRow = retryLogSheet.getLastRow();
+        console.log(`リトライログ行数: ${lastRow}行`);
+
+        if (lastRow > 1) {
+            const lastData = retryLogSheet.getRange(lastRow, 1, 1, 6).getValues()[0];
+            console.log('\n最新行:');
+            console.log(`  実行日時: ${lastData[0]}`);
+            console.log(`  総リトライ回数: ${lastData[1]}`);
+            console.log(`  リトライ発生バッチ数: ${lastData[2]}`);
+            console.log(`  最大リトライ回数: ${lastData[3]}`);
+            console.log(`  リトライ発生率: ${lastData[4]}%`);
+            console.log(`  備考: ${lastData[5]}`);
+        }
+    } else {
+        console.log('リトライログシートが存在しません');
+    }
+}
