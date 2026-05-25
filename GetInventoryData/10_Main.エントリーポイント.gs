@@ -1,4 +1,44 @@
 /**
+ * @file 10_Main.gs
+ * @description アプリケーションエントリーポイント。
+ * 処理全体の起点として、各モジュールを呼び出しオーケストレーション（指揮）を行います。
+ * ビジネスロジックやAPI通信の実装は各専用ファイルに委譲しています。
+ *
+ * ### 依存ファイルと役割分担
+ * - 11_Config.gs: 設定値・定数・トークン取得
+ * - 12_Logger.gs: ログ出力・リトライ統計管理
+ * - 13_NextEngineAPI.gs: NE APIへのHTTPリクエスト
+ * - 14_InventoryLogic.gs: 在庫データの取得・整形
+ * - 15_SpreadsheetRepository.gs: スプレッドシートへの書き込み
+ * - 17_SupabaseRepository.gs: Supabaseへのデータ書き込み（在庫マスタ更新を含む）
+ *
+ * ### 処理フロー (updateInventoryDataBatchWithRetry)
+ * 1. リトライ統計リセット (12_Logger.gs)
+ * 2. スプレッドシート・シート取得 (11_Config.gs)
+ * 3. 商品コードリスト構築 (本ファイル内ループ)
+ * 4. バッチ分割ループ (在庫取得・更新・エラー収集)
+ * 5. エラーログをシートに記録 (15_SpreadsheetRepository.gs)
+ * 6. リトライ統計を表示・記録 (12_Logger.gs / 15_SpreadsheetRepository.gs)
+ * 7. 実行タイムスタンプを記録 (15_SpreadsheetRepository.gs)
+ *
+ * ### トリガー設定
+ * - トリガー設定スクリプト.gsの setTrigger() で時間ベーストリガーを管理
+ * - プロパティ `TRIGGER_FUNCTION_NAME` に関数名を設定
+ * - GASの6分制限に注意し、必要に応じて `MAX_ITEMS_PER_CALL` を調整
+ *
+ * 【スクリプトプロパティ（要設定）】
+ *   SPREADSHEET_ID   : 対象スプレッドシートのID
+ *   SHEET_NAME       : 在庫データシート名
+ *   LOG_SHEET_NAME   : 実行タイムスタンプ記録先シート名
+ *   ACCESS_TOKEN     : NE APIアクセストークン（認証.gsで取得）
+ *   REFRESH_TOKEN    : NE APIリフレッシュトークン（認証.gsで取得）
+ *
+ * @see updateInventoryDataBatchWithRetry - 【メイン】トリガーに設定する関数
+ * @see showUsageGuide                   - 使い方ガイドをコンソールに表示
+ *
+ * @version 2.1 (リトライ統計対応)
+ */
+/**
  * メイン処理関数の修正版（リトライ統計対応）
  * 
  * 【変更内容】
@@ -350,5 +390,124 @@ function updateInventoryDataFromGoodsMaster() {
     } catch (error) {
         logError('全件更新エラー:', error.message);
         throw error;
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 統合テスト関数
+// ----------------------------------------------------------------------------
+
+/**
+ * Phase 5 統合テスト
+ *
+ * 【確認内容】
+ * 1. Step 3〜5 の一連の流れが正常に動作するか
+ * 2. テスト用スプレッドシートに正しく書き込まれるか
+ * 3. 処理時間が許容範囲内か（GAS 6分制限に対して余裕があるか）
+ *
+ * 【注意】
+ * - TEST_SPREADSHEET_ID に設定したテスト用スプレッドシートに書き込みます
+ * - 本番スプレッドシートへの書き込みは行いません
+ * - Phase 4 で設定済みの TEST_SPREADSHEET_ID をそのまま使用します
+ *
+ * 【本番切り替え手順】
+ * このテストが正常完了したら以下を実施してください
+ * 1. スクリプトプロパティ TRIGGER_FUNCTION_NAME を変更
+ *    変更前: updateInventoryDataBatchWithRetry
+ *    変更後: updateInventoryDataFromGoodsMaster
+ * 2. setTrigger() を実行してトリガーを再設定
+ */
+function testPhase5_IntegrationTest() {
+    console.log('=== Phase 5 統合テスト ===\n');
+
+    try {
+        // テスト用スプレッドシートIDの確認
+        const properties = PropertiesService.getScriptProperties();
+        const testSheetId = properties.getProperty('TEST_SPREADSHEET_ID');
+
+        if (!testSheetId) {
+            console.log('❌ TEST_SPREADSHEET_ID が設定されていません');
+            return;
+        }
+
+        const testSpreadsheet = SpreadsheetApp.openById(testSheetId);
+        const { SHEET_NAME } = getSpreadsheetConfig();
+        const testSheet = testSpreadsheet.getSheetByName(SHEET_NAME);
+
+        if (!testSheet) {
+            console.log(`❌ テスト用シート "${SHEET_NAME}" が見つかりません`);
+            return;
+        }
+
+        console.log(`テスト用スプレッドシート: ${testSpreadsheet.getName()}`);
+        console.log(`テスト用シート          : ${SHEET_NAME}\n`);
+
+        const tokens = getStoredTokens();
+        const startTime = new Date();
+
+        // Step 3: 全件取得
+        console.log('--- Step 3: 商品マスタAPI全件取得 ---');
+        const goodsMap = fetchAllGoodsData(tokens);
+        console.log(`取得件数: ${goodsMap.size}件\n`);
+
+        // Step 4: データ整形
+        console.log('--- Step 4: データ整形 ---');
+        const rows = buildInventoryDataRows(goodsMap);
+        console.log(`整形完了: ${rows.length}行\n`);
+
+        // Step 5: テスト用シートに書き込み
+        console.log('--- Step 5: テスト用シートへの書き込み ---');
+        const writeResult = writeAllInventoryData(testSheet, rows);
+
+        // Step 5b: Supabaseへの書き込み
+        console.log('--- Step 5b: Supabaseへの書き込み ---');
+        const supabaseResult = upsertInventoryToSupabase(goodsMap);
+
+        // 処理時間
+        const duration = ((new Date() - startTime) / 1000).toFixed(1);
+
+        // 結果確認
+        console.log('\n=== 統合テスト結果 ===');
+        console.log(`処理時間    : ${duration}秒`);
+        console.log(`取得件数    : ${goodsMap.size}件`);
+        console.log(`書込行数    : ${writeResult.dataRows}行`);
+        console.log(`Supabase    : ${supabaseResult.totalRecords}件（${supabaseResult.chunks}チャンク）`);
+        console.log(`GAS制限余裕 : ${360 - duration}秒（6分制限に対して）`);
+
+        // ヘッダー確認
+        const writtenHeaders = testSheet.getRange(1, 1, 1, 12).getValues()[0];
+        const headerOk = INVENTORY_SHEET_HEADERS.every(
+            (h, i) => h === writtenHeaders[i]
+        );
+        console.log(`ヘッダー    : ${headerOk ? '✓ 正常' : '❌ 異常'}`);
+
+        // データ確認（先頭・末尾3件）
+        const firstRows = testSheet.getRange(2, 1, 3, 12).getValues();
+        const lastRows = testSheet.getRange(
+            writeResult.dataRows - 1, 1, 3, 12
+        ).getValues();
+
+        console.log('\n【先頭3件】');
+        firstRows.forEach((row, i) => {
+            console.log(`  [${i + 1}] ${row[0]} | ${row[1]} | 在庫:${row[2]} | JAN:${row[11]}`);
+        });
+
+        console.log('\n【末尾3件】');
+        lastRows.forEach((row, i) => {
+            console.log(`  [${i + 1}] ${row[0]} | ${row[1]} | 在庫:${row[2]} | JAN:${row[11]}`);
+        });
+
+        console.log('\n=== 統合テスト完了 ===');
+        console.log('問題がなければ以下の手順で本番切り替えを実施してください');
+        console.log('');
+        console.log('1. スクリプトプロパティ TRIGGER_FUNCTION_NAME を変更');
+        console.log('   変更前: updateInventoryDataBatchWithRetry');
+        console.log('   変更後: updateInventoryDataFromGoodsMaster');
+        console.log('');
+        console.log('2. setTrigger() を実行してトリガーを再設定');
+
+    } catch (error) {
+        console.error(`統合テストエラー: ${error.message}`);
+        console.error(error.stack);
     }
 }
