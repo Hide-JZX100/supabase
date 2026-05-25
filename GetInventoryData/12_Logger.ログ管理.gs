@@ -135,3 +135,117 @@ function logAPIErrorDetail(apiName, requestData, responseData, error) {
 
     console.error('========================================\n');
 }
+
+/**
+ * バッチエラーメンテナンス
+ */
+function logBatchErrorSummary(batchNumber, errorList) {
+    if (errorList.length === 0) return;
+
+    console.error('\n========================================');
+    console.error(`⚠️ バッチ ${batchNumber} エラーサマリー`);
+    console.error('========================================');
+    console.error(`エラー件数: ${errorList.length}件`);
+
+    const errorTypes = {};
+    errorList.forEach(error => {
+        errorTypes[error.errorType] = (errorTypes[error.errorType] || 0) + 1;
+    });
+
+    console.error('\n--- エラー種別内訳 ---');
+    for (const [type, count] of Object.entries(errorTypes)) {
+        console.error(`${type}: ${count}件`);
+    }
+
+    const displayCount = Math.min(5, errorList.length);
+    console.error(`\n--- エラー詳細（最初の${displayCount}件） ---`);
+    for (let i = 0; i < displayCount; i++) {
+        const error = errorList[i];
+        console.error(`${i + 1}. ${error.goodsCode}: ${error.errorMessage}`);
+    }
+
+    if (errorList.length > 5) {
+        console.error(`... 他 ${errorList.length - 5}件のエラーはエラーログシートを参照してください`);
+    }
+
+    console.error('========================================\n');
+}
+
+// ----------------------------------------------------------------------------
+// リトライ統計オブジェクト（グローバル変数）
+// 実行ごとに resetRetryStats() でリセットされる
+// 15_SpreadsheetRepository.gs の logRetryStatsToSheet() からも直接参照される
+// ----------------------------------------------------------------------------
+let retryStats = {
+    totalRetries: 0,           // 総リトライ回数
+    batchesWithRetry: 0,       // リトライが発生したバッチ数
+    maxRetriesUsed: 0,         // 最大使用リトライ回数
+    retriesByBatch: []         // バッチごとのリトライ回数
+};
+
+/**
+ * リトライ統計をリセット
+ */
+function resetRetryStats() {
+    retryStats = {
+        totalRetries: 0,
+        batchesWithRetry: 0,
+        maxRetriesUsed: 0,
+        retriesByBatch: []
+    };
+}
+
+/**
+ * リトライ統計を記録
+ */
+function recordRetryAttempt(batchNumber, attemptNumber) {
+    retryStats.totalRetries++;
+
+    if (attemptNumber > 1) {
+        if (!retryStats.retriesByBatch[batchNumber]) {
+            retryStats.batchesWithRetry++;
+        }
+        retryStats.retriesByBatch[batchNumber] = attemptNumber;
+        retryStats.maxRetriesUsed = Math.max(retryStats.maxRetriesUsed, attemptNumber);
+    }
+}
+
+/**
+ * リトライ統計を表示
+ */
+function showRetryStats() {
+    if (!RETRY_CONFIG.LOG_RETRY_STATS || retryStats.totalRetries === 0) {
+        return;
+    }
+
+    console.log('\n========================================');
+    console.log('  リトライ統計情報');
+    console.log('========================================');
+    console.log(`総リトライ回数: ${retryStats.totalRetries}回`);
+    console.log(`リトライ発生バッチ: ${retryStats.batchesWithRetry}個`);
+    console.log(`最大リトライ回数: ${retryStats.maxRetriesUsed}回`);
+
+    if (retryStats.totalRetries > 0) {
+        console.log('\n--- リトライ発生バッチ詳細 ---');
+        retryStats.retriesByBatch.forEach((retries, batchNum) => {
+            if (retries > 1) {
+                console.log(`バッチ ${batchNum}: ${retries}回試行`);
+            }
+        });
+    }
+
+    // 障害検知アラート
+    if (retryStats.batchesWithRetry > 0) {
+        const retryRate = (retryStats.batchesWithRetry / retryStats.retriesByBatch.length * 100).toFixed(1);
+        console.log(`\n⚠️ リトライ発生率: ${retryRate}%`);
+
+        // リトライ発生率 10% 超は Google側またはネットワーク不調のサイン
+        // 参考: 正常時は 0〜5% 程度、5〜10% は軽度の不調
+        if (retryRate > 10) {
+            console.log('⚠️⚠️ 注意: リトライ発生率が高いです（10%以上）');
+            console.log('   → Google側またはネットワークの不調の可能性があります');
+        }
+    }
+
+    console.log('========================================\n');
+}
