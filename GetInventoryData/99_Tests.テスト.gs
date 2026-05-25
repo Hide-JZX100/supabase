@@ -267,3 +267,42 @@ function checkFileUsage() {
     });
 }
 
+/**
+ * 関数の所在地を特定
+ */
+function locateFunctions() {
+    console.log('=== 関数の所在確認 ===\n');
+
+    // 確認したい関数のリスト
+    const functionsToLocate = [
+        'updateInventoryDataBatchWithRetry',
+        'updateInventoryDataBatch',
+        'showUsageGuideWithRetry',
+        'showUsageGuide',
+        'enableRetry',
+        'disableRetry',
+        'showSREDashboard',
+        'compareVersions',
+        'getBatchInventoryDataWithRetry',
+        'getBatchInventoryData'
+    ];
+
+    functionsToLocate.forEach(funcName => {
+        try {
+            // GASではReflect APIが使えないためevalで関数オブジェクトを取得する
+            // 関数が存在しない場合はReferenceErrorがスローされるためtry-catchで処理する
+            const func = eval(funcName);
+            if (func) {
+                // 関数のソースコードを取得して最初の数行を表示
+                const source = func.toString();
+                const firstLine = source.split('\n')[0];
+                console.log(`✓ ${funcName}`);
+                console.log(`  先頭: ${firstLine.substring(0, 80)}...`);
+                console.log('');
+            }
+        } catch (e) {
+            console.log(`✗ ${funcName}: ${e.message}\n`);
+        }
+    });
+}
+
