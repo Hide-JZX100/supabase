@@ -1,4 +1,19 @@
 /**
+ * @file 16_SupabaseClient.Supabase接続.gs
+ * @description Supabase接続・RPC呼び出し汎用モジュール。
+ *
+ * ### 依存関係
+ * - **参照元**: 99_Tests.テスト.gs
+ * - **参照先**: 11_Config.設定管理.gs, 12_Logger.ログ管理.gs
+ *
+ * ### 主要関数
+ * @see getSupabaseConfig
+ * @see callSupabaseRpc
+ *
+ * @version 1.0
+ */
+
+/**
  * Supabase接続設定を取得
  *
  * スクリプトプロパティから SUPABASE_URL と SUPABASE_KEY を取得します。
