@@ -1,4 +1,35 @@
 /**
+ * @file 15_SpreadsheetRepository.gs
+ * @description データ永続化（スプレッドシート操作）モジュール。
+ * スプレッドシートへのすべての書き込み操作を担当します。
+ * 在庫データの更新、エラーログ・リトライログの記録、実行タイムスタンプの保存を一元管理します。
+ * データの取得・整形は行わず、受け取ったデータを書き込む責務に特化しています。
+ *
+ * ### 依存関係
+ * - **参照元**: 10_Main.gs (updateBatchInventoryData, logErrorsToSheet, logRetryStatsToSheet, recordExecutionTimestamp)
+ * - **参照先**:
+ *   - 11_Config.gs (COLUMNS, getSpreadsheetConfig)
+ *   - 12_Logger.gs (logWithLevel, logError, retryStats)
+ *
+ * ### 管理するシート
+ * - **対象シート (SHEET_NAME)**: 在庫データの更新先（メインシート）
+ * - **エラーログシート**: 処理中のエラーを蓄積記録（自動生成）
+ * - **リトライログシート**: リトライ発生時の統計を蓄積記録（自動生成）
+ * - **LOG_SHEETシート**: 実行タイムスタンプ記録先
+ *
+ * ### 一括更新の最適化 (updateBatchInventoryData)
+ * 連続した行をグループ化して1回の `setValues()` で複数行を一括書き込みします。
+ * これにより `SpreadsheetApp` への呼び出し回数を最小化し処理速度を向上させています。
+ *
+ * @version 2.1
+ * @see updateBatchInventoryData
+ * @see updateRowWithInventoryData
+ * @see logErrorsToSheet
+ * @see logRetryStatsToSheet
+ * @see recordExecutionTimestamp
+ */
+
+/**
  * バッチ単位でスプレッドシートを一括更新
  * 連続する行をグループ化して setValues() の呼び出し回数を最小化する
  *
