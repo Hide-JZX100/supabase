@@ -469,3 +469,93 @@ function testGoodsMasterApiEndpoint() {
     }
 }
 
+/**
+ * =============================================================================
+ * Phase 1: 商品マスタAPI全件取得テスト
+ * =============================================================================
+ *
+ * 【目的】
+ * エンドポイント変更にあたり以下の3点を段階的に検証する
+ *
+ * 【実行順序】
+ * Step 1: testPhase1_Step1() → フィルタ動作確認（1件取得）
+ * Step 2: testPhase1_Step2() → ページネーション動作確認（2ページ分）
+ * Step 3: testPhase1_Step3() → 全件取得して総件数を把握
+ *
+ * 【注意】
+ * - 既存コードへの影響はありません（読み取りのみ）
+ * - スプレッドシートへの書き込みは行いません
+ * =============================================================================
+ */
+
+// ============================================================================
+// Phase 1 共通設定
+// ============================================================================
+
+// xxxxxxを含む商品を除外するフィルタ値
+// MySQLのLIKE演算子と同じ書式: % は任意の文字列にマッチする
+const PHASE1_LOCATION_EXCLUDE = '%xxxxxx%';
+
+// 取得するフィールド一覧（変更後のスプレッドシート列と対応）
+// A列: goods_id          B列: goods_name
+// C列: stock_quantity    D列: stock_allocation_quantity
+// E列: stock_free_quantity
+// F列: stock_advance_order_quantity
+// G列: stock_advance_order_allocation_quantity
+// H列: stock_advance_order_free_quantity
+// I列: stock_defective_quantity
+// J列: stock_remaining_order_quantity
+// K列: stock_out_quantity
+// L列: goods_jan_code
+const PHASE1_FIELDS = [
+    'goods_id',
+    'goods_name',
+    'goods_jan_code',
+    'goods_location',                              // フィルタ結果の確認用（本番では不要）
+    'stock_quantity',
+    'stock_allocation_quantity',
+    'stock_free_quantity',
+    'stock_advance_order_quantity',
+    'stock_advance_order_allocation_quantity',
+    'stock_advance_order_free_quantity',
+    'stock_defective_quantity',
+    'stock_remaining_order_quantity',
+    'stock_out_quantity'
+].join(',');
+
+/**
+ * Phase 1 共通APIリクエスト関数
+ *
+ * @param {Object} tokens    - 認証トークン
+ * @param {number} limit     - 取得件数
+ * @param {number} offset    - 取得開始位置（0始まり）
+ * @return {Object}          - APIレスポンスオブジェクト
+ */
+function phase1_fetchGoodsData_(tokens, limit, offset) {
+    const url = `${NE_API_URL}/api_v1_master_goods/search`;
+
+    const payload = {
+        'access_token': tokens.accessToken,
+        'refresh_token': tokens.refreshToken,
+        'fields': PHASE1_FIELDS,
+        'goods_location-nlikeornull': PHASE1_LOCATION_EXCLUDE,
+        'limit': limit.toString(),
+        'offset': offset.toString()
+    };
+
+    const options = {
+        'method': 'POST',
+        'headers': { 'Content-Type': 'application/x-www-form-urlencoded' },
+        'payload': Object.keys(payload)
+            .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(payload[key]))
+            .join('&')
+    };
+
+    const startTime = new Date();
+    const response = UrlFetchApp.fetch(url, options);
+    const responseData = JSON.parse(response.getContentText());
+    const duration = ((new Date() - startTime) / 1000).toFixed(2);
+
+    return { responseData, duration };
+}
+
